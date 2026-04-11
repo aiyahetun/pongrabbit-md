@@ -93,6 +93,7 @@
   <button type="button" class="fmt-btn" id="r-code" title="行内代码">`</button>
   <button type="button" class="fmt-btn" id="r-codeblock" title="代码块">&lt;/&gt;</button>
   <button type="button" class="fmt-btn" id="r-link" title="链接">🔗</button>
+  <button type="button" class="fmt-btn" id="r-image" title="插入图片">🖼</button>
   <button type="button" class="fmt-btn" id="r-table" title="表格">▦</button>
   <button type="button" class="fmt-btn" id="r-hr" title="分割线">─</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
@@ -115,6 +116,7 @@
   <button type="button" class="fmt-btn" id="fmt-code" title="行内代码">代码</button>
   <button type="button" class="fmt-btn" id="fmt-codeblock" title="代码块">代码块</button>
   <button type="button" class="fmt-btn" id="fmt-link" title="链接">链接</button>
+  <button type="button" class="fmt-btn" id="fmt-image" title="插入图片">图片</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
   <button type="button" class="fmt-btn" id="fmt-ul" title="无序列表">无序</button>
   <button type="button" class="fmt-btn" id="fmt-ol" title="有序列表">有序</button>
@@ -140,10 +142,23 @@
 
 <!-- 主区域 -->
 <div id="main-area">
-  <div id="sidebar" style="display:none">
-    <div class="sidebar-header">最近文件</div>
+  <aside id="sidebar">
+    <div class="sidebar-toolbar">
+      <button type="button" class="sidebar-icon-btn" id="btn-sidebar-collapse" title="折叠侧栏">◀</button>
+      <span class="sidebar-toolbar-title">工作区</span>
+      <button type="button" class="sidebar-icon-btn" id="btn-workspace-pick" title="选择文件夹">📁</button>
+      <button type="button" class="sidebar-icon-btn" id="btn-workspace-refresh" title="刷新">↻</button>
+    </div>
+    <div id="workspace-path-hint" class="workspace-hint"></div>
+    <div id="file-tree" class="file-tree" aria-label="工作区文件"></div>
+    <div class="sidebar-tree-actions">
+      <button type="button" class="sidebar-action-btn" id="btn-tree-new-file">＋ 笔记</button>
+      <button type="button" class="sidebar-action-btn" id="btn-tree-new-folder">＋ 文件夹</button>
+    </div>
+    <div class="sidebar-header">最近打开</div>
     <div id="recent-list"></div>
-  </div>
+  </aside>
+  <button type="button" id="sidebar-rail" class="sidebar-rail" title="展开侧栏" aria-label="展开侧栏" hidden>▶</button>
 
   <!-- 所见即所得 -->
   <div id="wysiwyg-pane" class="editor-pane">
@@ -221,14 +236,14 @@
   </div>
   <div class="panel-section music-panel-section">
     <div class="music-section-head">
-      <span class="panel-label music-lib-label">白噪音库</span>
+      <span class="panel-label music-lib-label">环境音</span>
       <span class="music-presets-tag">PRESETS</span>
     </div>
     <div class="noise-grid">
       <button type="button" class="noise-btn" data-type="rain"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2c-.85 3.15-3.55 5.75-3.55 8.75a3.55 3.55 0 1 0 7.1 0c0-3-2.7-5.6-3.55-8.75z"/></svg></span><span class="noise-btn-label">雨声</span></button>
       <button type="button" class="noise-btn" data-type="forest"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4 8 17h8L12 4zm-1 13h2v4h-2v-4z"/></svg></span><span class="noise-btn-label">森林</span></button>
       <button type="button" class="noise-btn" data-type="ocean"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M2 14.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2v-1.5zm0-4.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2V10z"/></svg></span><span class="noise-btn-label">海浪</span></button>
-      <button type="button" class="noise-btn" data-type="wind"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg noise-ico-stroke" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4 9h10a2.5 2.5 0 1 0 0-1H4m0 4.5h14M4 18h8a2 2 0 1 1 0 1"/></svg></span><span class="noise-btn-label">风声</span></button>
+      <button type="button" class="noise-btn" data-type="wind"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg noise-ico-stroke" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4 9h10a2.5 2.5 0 1 0 0-1H4m0 4.5h14M4 18h8a2 2 0 1 1 0 1"/></svg></span><span class="noise-btn-label">城市</span></button>
       <button type="button" class="noise-btn" data-type="fire"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c-1.25 3.6-4.1 4.6-4.1 8.2 0 2.3 1.3 4.2 3.2 5.1.45-1.05 1.9-3.1 1.9-5.1 0-3.6-2.85-4.6-4.1-8.2z"/></svg></span><span class="noise-btn-label">篝火</span></button>
       <button type="button" class="noise-btn" data-type="cafe"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6 6h9v4.5A3.25 3.25 0 0 1 11.75 14h-2.5A3.25 3.25 0 0 1 6 10.5V6zm11 3.5h1.5a2 2 0 0 1 2 2v.4a2 2 0 0 1-2 2H17V9.5zM8 17.25h6v1.5H8v-1.5z"/></svg></span><span class="noise-btn-label">咖啡馆</span></button>
     </div>
@@ -287,10 +302,16 @@
     <div class="panel-label">字体</div>
     <select id="font-family-select">
       <option value="system">系统默认（微软雅黑）</option>
+      <option value="sourcehan">思源黑体</option>
       <option value="songti">宋体</option>
       <option value="kaiti">楷体</option>
       <option value="mono">等宽字体</option>
     </select>
+  </div>
+  <div class="panel-section">
+    <div class="panel-label">工作区根目录</div>
+    <button type="button" class="action-btn" id="btn-settings-workspace" style="width:100%;margin-top:4px">选择文件夹…</button>
+    <div id="settings-workspace-display" class="settings-path-hint"></div>
   </div>
   <div class="panel-section">
     <label class="toggle-label">
@@ -305,10 +326,10 @@
       <button type="button" id="btn-clear-bg">清除背景</button>
     </div>
     <div id="bg-path-display"></div>
-    <div class="panel-label" style="margin-top:12px">模糊度 <span id="blur-display">20px</span></div>
-    <input type="range" id="blur-slider" min="4" max="40" value="20" step="1">
-    <div class="panel-label" style="margin-top:12px">遮罩透明度 <span id="overlay-display">15%</span></div>
-    <input type="range" id="overlay-slider" min="0" max="60" value="15" step="1">
+    <div class="panel-label" style="margin-top:12px">模糊度（有背景图时） <span id="blur-display">28px</span></div>
+    <input type="range" id="blur-slider" min="4" max="48" value="28" step="1" title="仅在选择背景图后对壁纸模糊生效">
+    <div class="panel-label" style="margin-top:12px">遮罩强度（有背景图时） <span id="overlay-display">3%</span></div>
+    <input type="range" id="overlay-slider" min="0" max="60" value="2" step="1" title="仅在选择背景图后叠在壁纸上，数值越大越朦胧">
   </div>
 </div>
 

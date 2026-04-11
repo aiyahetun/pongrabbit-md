@@ -32,17 +32,32 @@ let findMatches=[], findIdx=0, isResizing=false
 let audioCtx=null,noiseNodes=null,noiseType=null
 let musicTracks=[],musicIdx=0,musicAudio=null,musicNext=null
 let musicPlaying=false,playMode='order',musicVolume=0.6
+let treeExpanded=new Set()
+let treeContextDir=''
 
 // ── Init ─────────────────────────────────────────────────────
+function detectPlatform () {
+  if (window.pengPlatform === 'darwin' || window.pengPlatform === 'win32' || window.pengPlatform === 'linux') {
+    return window.pengPlatform
+  }
+  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : ''
+  if (/Mac|iPhone|iPad|iPod/i.test(ua)) return 'darwin'
+  if (/Windows/i.test(ua)) return 'win32'
+  return 'linux'
+}
+
 async function init() {
-  if (window.pengPlatform === 'darwin') body.classList.add('platform-darwin')
-  else if (window.pengPlatform === 'win32') body.classList.add('platform-win32')
+  const plat = detectPlatform()
+  if (plat === 'darwin') body.classList.add('platform-darwin')
+  else if (plat === 'win32') body.classList.add('platform-win32')
   else body.classList.add('platform-linux')
+  const appIconEl = $('app-icon')
+  if (appIconEl && window.appIconSrc) appIconEl.src = window.appIconSrc
   if (window.mobiAPI.onOpenFilePath) {
     window.mobiAPI.onOpenFilePath(p => { openFileFromPath(p) })
   }
   cfg = await window.mobiAPI.getConfig()
-  applyConfig(cfg)
+  await applyConfig(cfg)
   setupModeTabs()
   setupRichEditor()
   setupMdToolbar()
@@ -50,8 +65,11 @@ async function init() {
   setupFindBar()
   setupResizer()
   setupPanels()
+  setupWorkspaceSidebar()
   setupKeyboard()
   setupMenu()
+  await syncWorkspaceHint()
+  await refreshWorkspaceTree()
   await loadRecentFiles()
   setMode('wysiwyg')
   window.mobiAPI.onWinState(s=>$('btn-maximize').textContent=s==='maximized'?'❐':'□')
@@ -81,23 +99,31 @@ async function openFileFromPath(filePath) {
   renderPreview()
   updateStatus()
   await loadRecentFiles()
+  await refreshWorkspaceTree()
 }
 
 // ── Config ───────────────────────────────────────────────────
-function applyConfig(c) {
+function applySidebarCollapsedState (collapsed) {
+  body.classList.toggle('sidebar-collapsed', !!collapsed)
+  const rail = $('sidebar-rail')
+  if (rail) rail.hidden = !collapsed
+}
+
+async function applyConfig(c) {
   applyTheme(c.theme||'light', false)
   setFont(c.fontFamily||'system')
   const fs=(c.fontSize||15)+'px', lh=c.lineHeight||1.8
   richEditor.style.fontSize=fs; richEditor.style.lineHeight=lh
   mdEditor.style.fontSize=fs;   mdEditor.style.lineHeight=lh
-  if(c.bgImagePath) applyBgImage(c.bgImagePath)
-  if(c.glassBlur)   applyGlassBlur(c.glassBlur)
-  if(c.glassOverlay!==undefined) applyGlassOverlay(c.glassOverlay)
+  await applyBgImage(c.bgImagePath || '')
+  applyGlassBlur(c.glassBlur ?? 28)
+  applyGlassOverlay(c.glassOverlay ?? 2)
   musicVolume=c.musicVolume!==undefined?c.musicVolume:0.6
   $('volume-slider').value=Math.round(musicVolume*100)
   $('volume-display').textContent=Math.round(musicVolume*100)+'%'
   syncVolumeSliderVar()
   syncUI(c)
+  applySidebarCollapsedState(!!c.sidebarCollapsed)
   if(c.musicFolder){$('music-folder-display').textContent=c.musicFolder;loadMusicFolder(c.musicFolder)}
 }
 
@@ -108,11 +134,15 @@ function syncUI(c){
   $('line-height-display').textContent=(c.lineHeight||1.8)
   $('font-family-select').value=c.fontFamily||'system'
   $('word-wrap-toggle').checked=c.wordWrap!==false
-  $('blur-slider').value=c.glassBlur||20
-  $('blur-display').textContent=(c.glassBlur||20)+'px'
-  $('overlay-slider').value=c.glassOverlay!==undefined?c.glassOverlay:15
-  $('overlay-display').textContent=(c.glassOverlay!==undefined?c.glassOverlay:15)+'%'
-  if(c.bgImagePath)$('bg-path-display').textContent=c.bgImagePath
+  $('blur-slider').value=c.glassBlur ?? 28
+  $('blur-display').textContent=($('blur-slider').value)+'px'
+  const ov=c.glassOverlay!==undefined?c.glassOverlay:2
+  $('overlay-slider').value=ov
+  $('overlay-display').textContent=Math.round(ov/60*100)+'%'
+  const bgd=$('bg-path-display')
+  if(bgd)bgd.textContent=c.bgImagePath?c.bgImagePath:''
+  const sw=$('settings-workspace-display')
+  if(sw)sw.textContent=(c.workspaceRoot&&String(c.workspaceRoot).trim())?c.workspaceRoot:'未选择'
 }
 
 // ── Theme ────────────────────────────────────────────────────
@@ -134,6 +164,7 @@ function applyTheme(theme, save=true) {
   if (window.mobiAPI.syncMacVibrancy) {
     window.mobiAPI.syncMacVibrancy(theme).catch(() => {})
   }
+  refreshGlassEffects()
   if(save) save_cfg({theme})
 }
 async function setTheme(t){
@@ -143,19 +174,82 @@ async function setTheme(t){
 }
 
 function setFont(f){
-  body.classList.remove('font-songti','font-kaiti','font-mono')
+  body.classList.remove('font-songti','font-kaiti','font-mono','font-sourcehan')
   if(f!=='system')body.classList.add('font-'+f);cfg.fontFamily=f
 }
-function applyBgImage(p){
-  if(!p){$('bg-layer').style.backgroundImage='';return}
-  $('bg-layer').style.backgroundImage=`url("file:///${p.replace(/\\/g,'/').replace(/#/g,'%23')}")`
+async function applyBgImage(p){
+  const layer=$('bg-layer')
+  if(!p){
+    if(layer)layer.style.backgroundImage=''
+    body.classList.remove('glass-has-bg')
+    refreshGlassEffects()
+    return
+  }
+  if(!layer)return
+  if(typeof window.mobiAPI.loadBgImageDataUrl!=='function'){
+    console.warn('[bg] loadBgImageDataUrl 不可用')
+    body.classList.remove('glass-has-bg')
+    refreshGlassEffects()
+    return
+  }
+  const r=await window.mobiAPI.loadBgImageDataUrl(p)
+  if(r&&r.dataUrl){
+    const u=r.dataUrl.replace(/"/g,'\\"')
+    layer.style.backgroundImage='url("'+u+'")'
+    layer.style.backgroundSize='cover'
+    layer.style.backgroundPosition='center'
+    layer.style.backgroundRepeat='no-repeat'
+    body.classList.add('glass-has-bg')
+  }else{
+    layer.style.backgroundImage=''
+    body.classList.remove('glass-has-bg')
+    if(r&&r.error)console.warn('[bg]',p,r.error)
+  }
+  refreshGlassEffects()
 }
+
+/** 毛玻璃 + 自定义背景：全屏遮罩可模糊壁纸；无背景图时关闭（避免 blur 糊到 WebView 白底） */
+function refreshGlassEffects(){
+  applyGlassBlur(cfg.glassBlur ?? 28)
+  applyGlassOverlay(cfg.glassOverlay !== undefined ? cfg.glassOverlay : 2)
+}
+
 function applyGlassBlur(v){
-  $('glass-overlay').style.backdropFilter=`blur(${Math.min(v/3,10)}px) brightness(1.05)`
-  $('glass-overlay').style.webkitBackdropFilter=`blur(${Math.min(v/3,10)}px) brightness(1.05)`
+  const go = $('glass-overlay')
+  if (!go) return
+  const px = Math.min(Math.max(Number(v) || 0, 4), 48)
+  if (body.classList.contains('theme-glass')) {
+    if (!body.classList.contains('glass-has-bg')) {
+      go.style.backdropFilter = 'none'
+      go.style.webkitBackdropFilter = 'none'
+      return
+    }
+    go.style.backdropFilter = `blur(${px}px) saturate(1.06)`
+    go.style.webkitBackdropFilter = `blur(${px}px) saturate(1.06)`
+    return
+  }
+  go.style.backdropFilter = `blur(${px}px) brightness(1.06) saturate(1.15)`
+  go.style.webkitBackdropFilter = `blur(${px}px) brightness(1.06) saturate(1.15)`
 }
+
 function applyGlassOverlay(v){
-  $('glass-overlay').style.background=`rgba(255,255,255,${v/400})`
+  const go = $('glass-overlay')
+  if (!go) return
+  if (body.classList.contains('theme-glass')) {
+    if (!body.classList.contains('glass-has-bg')) {
+      go.style.background = 'transparent'
+      return
+    }
+    const raw = Math.min(60, Math.max(0, Number(v) || 0))
+    const t = raw / 60
+    const alpha = t * 0.52
+    const dark = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches
+    go.style.background = dark
+      ? `rgba(0, 0, 0, ${alpha * 0.92})`
+      : `rgba(255, 255, 255, ${alpha * 0.88})`
+    return
+  }
+  go.style.background = `rgba(255,255,255,${Math.min(0.09, Math.max(0, v) / 900)})`
 }
 
 // ════ 编辑模式 ══════════════════════════════════════════════
@@ -254,6 +348,7 @@ function setupRichEditor(){
   $('r-code').onclick=()=>wrapTag('code')
   $('r-codeblock').onclick=()=>insertCodeBlock()
   $('r-link').onclick=()=>showLinkDialog()
+  $('r-image').onclick=()=>insertMarkdownImageAtCursor()
   $('r-table').onclick=()=>showTableDialog()
   $('r-hr').onclick=()=>document.execCommand('insertHorizontalRule')
   $('btn-find-r').onclick=()=>showFindBar()
@@ -318,6 +413,7 @@ function setupMdToolbar(){
   $('fmt-code').onclick=()=>wrapMd('`','`')
   $('fmt-codeblock').onclick=()=>wrapMd('\n```\n','\n```\n')
   $('fmt-link').onclick=()=>showLinkDialog()
+  $('fmt-image').onclick=()=>insertMarkdownImageAtCursor()
   $('fmt-ul').onclick=()=>prefixMd('- ')
   $('fmt-ol').onclick=()=>prefixMd('1. ')
   $('fmt-task').onclick=()=>prefixMd('- [ ] ')
@@ -372,15 +468,15 @@ async function openFile(){
   richEditor.innerHTML=md2html(r.content)
   _lastSrc='wysiwyg'
   currentFile=r.filePath;setModified(false);setTitle(bn(r.filePath))
-  renderPreview();updateStatus();await loadRecentFiles()
+  renderPreview();updateStatus();await loadRecentFiles();await refreshWorkspaceTree()
 }
 async function saveFile(){
   const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
-  if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles()}
+  if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles();await refreshWorkspaceTree()}
 }
 async function saveFileAs(){
   const r=await window.mobiAPI.saveFileAs({content:getCurrentMd()})
-  if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles()}
+  if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles();await refreshWorkspaceTree()}
 }
 async function exportHtml(){
   await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
@@ -417,6 +513,14 @@ async function renderPreview(){
         try{const r=await window.hljsAPI.highlight(blk.textContent,lang);blk.innerHTML=r.value;blk.classList.add('hljs')}catch(e){}
       }
     }
+    for(const img of previewEl.querySelectorAll('img')){
+      const s=img.getAttribute('src')
+      if(!s||/^https?:\/\//i.test(s))continue
+      try{
+        const resolved=await window.mobiAPI.resolveMarkdownImage(currentFile||'',s)
+        if(resolved)img.setAttribute('src',resolved)
+      }catch(_){}
+    }
     previewEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
       cb.addEventListener('change',()=>{cb.checked=!cb.checked})
     })
@@ -451,7 +555,12 @@ function nodeToMd(node){
     case 'blockquote':return blk(inn().trim().split('\n').map(l=>'> '+l).join('\n'))
     case 'hr':return blk('---')
     case 'a': return '['+inn()+']('+node.getAttribute('href')+')'
-    case 'img':return '!['+node.getAttribute('alt')+']('+(node.getAttribute('src')||'')+')'
+    case 'img':{
+      const mdSrc=node.getAttribute('data-md-src')
+      const href=mdSrc||(node.getAttribute('src')||'')
+      const alt=node.getAttribute('alt')||''
+      return '!['+alt+']('+href+')'
+    }
     case 'ul':return '\n'+Array.from(node.children).map(li=>{
       const cb=li.querySelector('input[type="checkbox"]')
       const txt=(cb?li.innerText.replace(cb.outerHTML,''):li.innerText).trim()
@@ -725,16 +834,191 @@ function setupMenu(){
 async function loadRecentFiles(){
   const files=await window.mobiAPI.getRecentFiles()
   const list=$('recent-list');list.innerHTML=''
-  if(!files.length){list.innerHTML='<div style="font-size:12px;padding:12px;opacity:.4">暂无最近打开的文档</div>';return}
+  if(!files.length){list.innerHTML='<div class="recent-empty-hint">暂无最近打开的文档</div>';return}
   files.forEach(f=>{
     const el=document.createElement('div');el.className='recent-item';el.textContent=bn(f);el.title=f
     el.onclick=async()=>{
+      if(isModified){
+        const resp=await window.mobiAPI.newFile({hasChanges:true})
+        if(resp.action==='cancel')return
+        if(resp.action==='save')await saveFile()
+      }
       const r=await window.mobiAPI.readFile(f);if(!r||r.error)return
       mdEditor.value=r.content;richEditor.innerHTML=md2html(r.content);_lastSrc='wysiwyg'
       currentFile=r.filePath;setModified(false);setTitle(bn(f));renderPreview();updateStatus()
+      await refreshWorkspaceTree()
     }
     list.appendChild(el)
   })
+}
+
+// ════ 工作区侧栏 ════════════════════════════════════════════
+async function syncWorkspaceHint(){
+  const w=await window.mobiAPI.workspaceGetRoot()
+  const hint=$('workspace-path-hint')
+  if(hint)hint.textContent=w.root||'未选择工作区，点击 📁 指定文件夹'
+  if(w.root)cfg.workspaceRoot=w.root
+  const sw=$('settings-workspace-display')
+  if(sw)sw.textContent=w.root||'未选择'
+}
+
+function getCurrentWorkspaceRel(){
+  const wrRaw=(cfg.workspaceRoot||'').replace(/[/\\]+$/,'')
+  if(!wrRaw||!currentFile)return null
+  const wr=wrRaw.replace(/\\/g,'/')
+  const cf=currentFile.replace(/\\/g,'/')
+  const wnorm=wr.toLowerCase()
+  const cfnorm=cf.toLowerCase()
+  if(!cfnorm.startsWith(wnorm))return null
+  if(cf.length>wr.length){
+    const next=cf.charAt(wr.length)
+    if(next!=='/'&&next!=='\\')return null
+  }
+  return cf.slice(wr.length).replace(/^[/\\]+/,'')
+}
+
+async function appendTreeLevel(rel,depth,parentEl){
+  const r=await window.mobiAPI.workspaceListDir(rel)
+  if(r.error||!r.entries)return
+  const activeRel=getCurrentWorkspaceRel()
+  for(const e of r.entries){
+    if(e.isDirectory){
+      const row=document.createElement('div')
+      row.className='tree-row tree-folder'
+      row.style.paddingLeft=(6+depth*12)+'px'
+      const chev=document.createElement('button')
+      chev.type='button'
+      chev.className='tree-chevron'
+      chev.textContent=treeExpanded.has(e.relPath)?'▼':'▶'
+      chev.onclick=ev=>{
+        ev.stopPropagation()
+        if(treeExpanded.has(e.relPath))treeExpanded.delete(e.relPath)
+        else treeExpanded.add(e.relPath)
+        void refreshWorkspaceTree()
+      }
+      const name=document.createElement('span')
+      name.className='tree-name'
+      name.textContent=e.name
+      name.onclick=ev=>{
+        ev.stopPropagation()
+        treeContextDir=e.relPath
+        treeExpanded.add(e.relPath)
+        void refreshWorkspaceTree()
+      }
+      row.appendChild(chev)
+      row.appendChild(name)
+      parentEl.appendChild(row)
+      if(treeExpanded.has(e.relPath))await appendTreeLevel(e.relPath,depth+1,parentEl)
+    }else{
+      const row=document.createElement('div')
+      row.className='tree-row tree-file'+(e.relPath===activeRel?' tree-row-active':'')
+      row.style.paddingLeft=(6+depth*12)+'px'
+      const sp=document.createElement('span')
+      sp.className='tree-chevron-spacer'
+      row.appendChild(sp)
+      const name=document.createElement('span')
+      name.className='tree-name'
+      name.textContent=e.name
+      row.onclick=()=>{void openWorkspaceRelFile(e.relPath)}
+      row.appendChild(name)
+      parentEl.appendChild(row)
+    }
+  }
+}
+
+async function refreshWorkspaceTree(){
+  const tree=$('file-tree')
+  if(!tree)return
+  await syncWorkspaceHint()
+  const w=await window.mobiAPI.workspaceGetRoot()
+  tree.innerHTML=''
+  if(!w.root)return
+  await appendTreeLevel('',0,tree)
+}
+
+async function openWorkspaceRelFile(relPath){
+  if(isModified){
+    const resp=await window.mobiAPI.newFile({hasChanges:true})
+    if(resp.action==='cancel')return
+    if(resp.action==='save')await saveFile()
+  }
+  const r=await window.mobiAPI.workspaceReadFile(relPath)
+  if(!r||r.error)return
+  mdEditor.value=r.content
+  richEditor.innerHTML=md2html(r.content)
+  _lastSrc='wysiwyg'
+  currentFile=r.filePath
+  setModified(false)
+  setTitle(bn(r.filePath))
+  setMode('wysiwyg')
+  renderPreview()
+  updateStatus()
+  await loadRecentFiles()
+  await refreshWorkspaceTree()
+}
+
+function setupWorkspaceSidebar(){
+  $('btn-sidebar-collapse').onclick=async()=>{
+    applySidebarCollapsedState(true)
+    await window.mobiAPI.saveConfig({sidebarCollapsed:true})
+    Object.assign(cfg,{sidebarCollapsed:true})
+  }
+  $('sidebar-rail').onclick=async()=>{
+    applySidebarCollapsedState(false)
+    await window.mobiAPI.saveConfig({sidebarCollapsed:false})
+    Object.assign(cfg,{sidebarCollapsed:false})
+  }
+  $('btn-workspace-pick').onclick=async()=>{
+    const r=await window.mobiAPI.workspacePickRoot()
+    if(r.cancelled)return
+    cfg.workspaceRoot=r.root
+    await syncWorkspaceHint()
+    await refreshWorkspaceTree()
+  }
+  $('btn-workspace-refresh').onclick=()=>{void refreshWorkspaceTree()}
+  $('btn-tree-new-file').onclick=async()=>{
+    const name=prompt('新笔记名称（可省略 .md）','未命名.md')
+    if(name==null||!String(name).trim())return
+    const r=await window.mobiAPI.workspaceCreateFile(treeContextDir,String(name).trim())
+    if(r.error){
+      alert(r.error==='exists'?'已存在同名文件':r.error==='no-workspace'?'请先选择工作区':String(r.error))
+      return
+    }
+    if(treeContextDir)treeExpanded.add(treeContextDir)
+    await refreshWorkspaceTree()
+    await openWorkspaceRelFile(r.relPath)
+  }
+  $('btn-tree-new-folder').onclick=async()=>{
+    const name=prompt('新文件夹名称','新建文件夹')
+    if(name==null||!String(name).trim())return
+    const r=await window.mobiAPI.workspaceMkdir(treeContextDir,String(name).trim())
+    if(r.error){
+      alert(r.error==='exists'?'已存在同名文件夹':r.error==='no-workspace'?'请先选择工作区':String(r.error))
+      return
+    }
+    if(treeContextDir)treeExpanded.add(treeContextDir)
+    if(r.relPath)treeExpanded.add(r.relPath)
+    await refreshWorkspaceTree()
+  }
+}
+
+async function insertMarkdownImageAtCursor(){
+  const r=await window.mobiAPI.importMarkdownImage({mdFilePath:currentFile||''})
+  if(r.cancelled)return
+  if(r.error){alert(r.error);return}
+  if(editMode==='markdown'||(editMode==='split'&&_lastSrc==='md')){
+    insertMd('![]('+r.mdRel+')')
+    return
+  }
+  if(editMode==='preview')return
+  const img=document.createElement('img')
+  img.setAttribute('src',r.fileUrl)
+  img.setAttribute('alt','')
+  img.setAttribute('data-md-src',r.mdRel)
+  document.execCommand('insertHTML',false,img.outerHTML)
+  _lastSrc='wysiwyg'
+  setModified(true)
+  scheduleRender();updateStatus()
 }
 
 // ════ 面板 ══════════════════════════════════════════════════
@@ -765,12 +1049,38 @@ function setupSettingsPanel(){
   $('line-height-slider').oninput=function(){const v=+this.value/10;richEditor.style.lineHeight=mdEditor.style.lineHeight=v;$('line-height-display').textContent=v.toFixed(1);save_cfg({lineHeight:v})}
   $('font-family-select').onchange=function(){setFont(this.value);save_cfg({fontFamily:this.value})}
   $('word-wrap-toggle').onchange=function(){body.classList.toggle('no-wrap',!this.checked);save_cfg({wordWrap:this.checked})}
-  $('btn-pick-bg').onclick=async()=>{const p=await window.mobiAPI.pickBgImage();if(p){applyBgImage(p);$('bg-path-display').textContent=p;save_cfg({bgImagePath:p})}}
-  $('btn-clear-bg').onclick=()=>{$('bg-layer').style.backgroundImage='';$('bg-path-display').textContent='';save_cfg({bgImagePath:''})}
+  $('btn-pick-bg').onclick=async()=>{
+    const p=await window.mobiAPI.pickBgImage()
+    if(!p)return
+    $('bg-path-display').textContent=p
+    await save_cfg({bgImagePath:p})
+    await applyBgImage(p)
+  }
+  $('btn-clear-bg').onclick=async()=>{
+    $('bg-path-display').textContent=''
+    await save_cfg({bgImagePath:''})
+    await applyBgImage('')
+  }
+  const btnWs=$('btn-settings-workspace')
+  if(btnWs)btnWs.onclick=async()=>{
+    const r=await window.mobiAPI.workspacePickRoot()
+    if(r.cancelled)return
+    cfg.workspaceRoot=r.root
+    await syncWorkspaceHint()
+    await refreshWorkspaceTree()
+  }
   $('blur-slider').oninput=function(){const v=+this.value;$('blur-display').textContent=v+'px';applyGlassBlur(v);save_cfg({glassBlur:v})}
-  $('overlay-slider').oninput=function(){const v=+this.value;$('overlay-display').textContent=v+'%';applyGlassOverlay(v);save_cfg({glassOverlay:v})}
+  $('overlay-slider').oninput=function(){
+    const v=+this.value
+    $('overlay-display').textContent=Math.round(v/60*100)+'%'
+    applyGlassOverlay(v)
+    save_cfg({glassOverlay:v})
+  }
 }
-function save_cfg(p){Object.assign(cfg,p);window.mobiAPI.saveConfig(p)}
+function save_cfg(p){
+  Object.assign(cfg,p)
+  return window.mobiAPI.saveConfig(p)
+}
 
 function syncVolumeSliderVar(){
   const el=$('volume-slider')
@@ -780,6 +1090,8 @@ function syncVolumeSliderVar(){
 // ════ 音频 ══════════════════════════════════════════════════
 function getCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}
 
+const AMBIENT_LABELS={rain:'雨声',forest:'森林',ocean:'海浪',wind:'城市',fire:'篝火',cafe:'咖啡馆'}
+
 function setupMusicPanel(){
   document.querySelectorAll('.noise-btn').forEach(btn=>{
     btn.onclick=function(){
@@ -788,10 +1100,10 @@ function setupMusicPanel(){
         stopNoise()
         document.querySelectorAll('.noise-btn').forEach(b=>b.classList.remove('active'))
       } else {
-        stopNoise()
+        stopAmbientImmediate()
         document.querySelectorAll('.noise-btn').forEach(b=>b.classList.remove('active'))
         this.classList.add('active')
-        startNoise(t)
+        void startNoise(t)
       }
     }
   })
@@ -806,7 +1118,10 @@ function setupMusicPanel(){
     musicVolume=+this.value/100
     $('volume-display').textContent=this.value+'%'
     syncVolumeSliderVar()
-    if(noiseNodes)noiseNodes.gain.gain.value=musicVolume
+    if(noiseNodes){
+      if(noiseNodes.kind==='file')noiseNodes.audio.volume=musicVolume
+      else noiseNodes.gain.gain.value=musicVolume
+    }
     if(musicAudio)musicAudio.volume=musicVolume
     save_cfg({musicVolume})
   }
@@ -816,48 +1131,136 @@ function setupMusicPanel(){
   syncVolumeSliderVar()
 }
 
-function startNoise(type){
+async function startNoise(type){
+  let url=null
+  try{
+    url=await window.mobiAPI.getAmbientAudioUrl(type)
+  }catch(_){url=null}
+  if(url){
+    const audio=new Audio()
+    audio.loop=true
+    audio.volume=0
+    audio.src=url
+    noiseType=type
+    noiseNodes={kind:'file',audio}
+    try{
+      await audio.play()
+      fadeTo(audio,musicVolume,2000)
+    }catch(e){
+      console.warn('ambient file',e)
+      stopAmbientImmediate()
+      startNoiseSynth(type)
+      return
+    }
+    $('btn-stop-noise').style.display=''
+    setMusicStatus(AMBIENT_LABELS[type]||type)
+    return
+  }
+  startNoiseSynth(type)
+}
+
+/** sounds 目录无对应文件时的合成音兜底 */
+function startNoiseSynth(type){
   const ctx=getCtx();noiseType=type
   const sr=ctx.sampleRate,len=sr*4,buf=ctx.createBuffer(2,len,sr)
+  const master=type==='rain'?0.56:0.58
   for(let ch=0;ch<2;ch++){
-    const d=buf.getChannelData(ch);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0
+    const d=buf.getChannelData(ch)
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,lp=0,sm=0,drip=0
     for(let i=0;i<len;i++){
       const w=Math.random()*2-1
-      if(type==='rain'){b0=0.99886*b0+w*0.0555179;b1=0.99332*b1+w*0.0750759;b2=0.969*b2+w*0.153852;b3=0.8665*b3+w*0.3104856;b4=0.55*b4+w*0.5329522;b5=-0.7616*b5-w*0.016898;d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11;b6=w*0.115926}
-      else if(type==='ocean'){b0=0.999*b0+w*0.001;d[i]=b0+w*0.04}
-      else if(type==='forest'){b0=0.97*b0+w*0.03;d[i]=b0*0.6+w*0.08}
-      else if(type==='wind'){d[i]=w*0.35}
-      else if(type==='fire'){b0=0.93*b0+w*0.07;d[i]=b0+(Math.random()<0.003?w*0.6:0)}
-      else if(type==='cafe'){b0=0.9*b0+w*0.1;d[i]=b0*0.4+w*0.15}
-      else d[i]=w*0.3
+      let s=0
+      if(type==='rain'){
+        b0=0.9932*b0+w*0.0068
+        if(Math.random()<0.000062)drip+=(Math.random()*2-1)*(0.36+Math.random()*0.26)
+        drip*=0.9892
+        s=b0*0.11+drip
+        sm=sm*0.84+s*0.16
+      } else if(type==='ocean'){
+        b0=0.9992*b0+w*0.0008;s=b0*0.55+w*0.018
+        sm=sm*0.93+s*0.07
+      } else if(type==='forest'){
+        b0=0.978*b0+w*0.022;s=b0*0.5+w*0.045
+        sm=sm*0.93+s*0.07
+      } else if(type==='wind'){
+        b0=0.992*b0+w*0.008;lp=0.97*lp+w*0.03;s=b0*0.42+lp*0.35
+        sm=sm*0.93+s*0.07
+      } else if(type==='fire'){
+        b0=0.945*b0+w*0.055;s=b0+(Math.random()<0.0018?w*0.32:0)
+        sm=sm*0.93+s*0.07
+      } else if(type==='cafe'){
+        b0=0.93*b0+w*0.07;s=b0*0.32+w*0.065
+        sm=sm*0.93+s*0.07
+      } else { s=w*0.22;sm=sm*0.93+s*0.07 }
+      d[i]=sm*master
     }
   }
   const src=ctx.createBufferSource();src.buffer=buf;src.loop=true
   const gain=ctx.createGain();gain.gain.value=0
   const filt=ctx.createBiquadFilter()
-  if(type==='rain'){filt.type='bandpass';filt.frequency.value=900;filt.Q.value=0.6}
-  else if(type==='ocean'){filt.type='lowpass';filt.frequency.value=350}
-  else if(type==='forest'){filt.type='bandpass';filt.frequency.value=2200;filt.Q.value=0.9}
-  else if(type==='wind'){filt.type='highpass';filt.frequency.value=700}
-  else if(type==='fire'){filt.type='lowpass';filt.frequency.value=550}
-  else filt.type='allpass'
-  src.connect(filt);filt.connect(gain);gain.connect(ctx.destination);src.start()
-  gain.gain.linearRampToValueAtTime(musicVolume,ctx.currentTime+1.5)
-  noiseNodes={source:src,gain,filter:filt}
-  // 显示停止按钮
+  const soften=ctx.createBiquadFilter()
+  if(type==='rain'){
+    filt.type='bandpass'
+    filt.frequency.value=5200
+    filt.Q.value=0.55
+    soften.type='lowpass'
+    soften.frequency.value=12000
+    soften.Q.value=0.35
+  } else if(type==='ocean'){filt.type='lowpass';filt.frequency.value=260}
+  else if(type==='forest'){filt.type='bandpass';filt.frequency.value=1650;filt.Q.value=0.55}
+  else if(type==='wind'){filt.type='highpass';filt.frequency.value=420}
+  else if(type==='fire'){filt.type='lowpass';filt.frequency.value=420}
+  else if(type==='cafe'){filt.type='bandpass';filt.frequency.value=950;filt.Q.value=0.48}
+  else{filt.type='lowpass';filt.frequency.value=2000}
+  if(type!=='rain'){
+    soften.type='lowpass'
+    soften.frequency.value=3000
+    soften.Q.value=0.45
+  }
+  src.connect(filt);filt.connect(soften);soften.connect(gain);gain.connect(ctx.destination);src.start()
+  gain.gain.linearRampToValueAtTime(musicVolume,ctx.currentTime+(type==='rain'?2.6:2.2))
+  noiseNodes={kind:'synth',source:src,gain,filter:filt,soften}
   $('btn-stop-noise').style.display=''
-  setMusicStatus({rain:'雨声',forest:'森林',ocean:'海浪',wind:'风声',fire:'篝火',cafe:'咖啡馆'}[type]||type)
+  setMusicStatus(AMBIENT_LABELS[type]||type)
+}
+
+function stopAmbientImmediate(){
+  if(!noiseNodes)return
+  const n=noiseNodes
+  noiseNodes=null
+  noiseType=null
+  if(n.kind==='file'){
+    try{n.audio.pause();n.audio.removeAttribute('src');n.audio.load()}catch(_){}
+    return
+  }
+  if(n.kind==='synth'){
+    try{
+      n.source.stop()
+      n.source.disconnect()
+      if(n.filter)n.filter.disconnect()
+      if(n.soften)n.soften.disconnect()
+      n.gain.disconnect()
+    }catch(_){}
+  }
 }
 
 function stopNoise(){
   if(!noiseNodes){noiseType=null;$('btn-stop-noise').style.display='none';return}
   const n=noiseNodes;noiseNodes=null;noiseType=null
+  if(n.kind==='file'){
+    fadeTo(n.audio,0,550).then(()=>{
+      try{n.audio.pause();n.audio.removeAttribute('src');n.audio.load()}catch(_){}
+    })
+    $('btn-stop-noise').style.display='none'
+    if(!musicPlaying)hideMusicStatus()
+    return
+  }
   try{
     const ctx=getCtx()
     n.gain.gain.cancelScheduledValues(ctx.currentTime)
     n.gain.gain.setValueAtTime(n.gain.gain.value,ctx.currentTime)
     n.gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.5)
-    setTimeout(()=>{try{n.source.stop();n.source.disconnect();n.gain.disconnect()}catch(e){}},600)
+    setTimeout(()=>{try{n.source.stop();n.source.disconnect();if(n.filter)n.filter.disconnect();if(n.soften)n.soften.disconnect();n.gain.disconnect()}catch(e){}},600)
   }catch(e){try{n.source.stop()}catch(e2){}}
   $('btn-stop-noise').style.display='none'
   if(!musicPlaying)hideMusicStatus()

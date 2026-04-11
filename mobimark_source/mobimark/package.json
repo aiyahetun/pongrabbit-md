@@ -21,13 +21,11 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"],
-          "artifactName": "pongrabbit-MD Setup ${version}.${ext}"
+          "arch": ["x64"]
         },
         {
           "target": "portable",
-          "arch": ["x64"],
-          "artifactName": "pongrabbit-MD ${version}.${ext}"
+          "arch": ["x64"]
         }
       ],
       "icon": "build/icon.png",
@@ -73,12 +71,17 @@
       }
     },
     "nsis": {
+      "artifactName": "pongrabbit-MD Setup ${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "pongrabbit-MD"
     },
+    "portable": {
+      "artifactName": "pongrabbit-MD ${version}.${ext}"
+    },
+    "asarUnpack": ["src/main/preload.js"],
     "files": ["src/**/*", "node_modules/**/*"],
     "extraResources": [
       {
