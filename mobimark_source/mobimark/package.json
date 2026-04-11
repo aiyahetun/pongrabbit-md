@@ -1,0 +1,101 @@
+{
+  "name": "pongrabbit-md",
+  "version": "1.0.0",
+  "description": "pongrabbit-MD — Markdown 编辑器",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build-portable": "electron-builder --win portable --x64",
+    "build-mac": "electron-builder --mac",
+    "build-mac-universal": "electron-builder --mac --universal"
+  },
+  "build": {
+    "appId": "com.pongrabbit.md",
+    "productName": "pongrabbit-MD",
+    "copyright": "Copyright © 2026 pongrabbit-MD",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"],
+          "artifactName": "pongrabbit-MD Setup ${version}.${ext}"
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"],
+          "artifactName": "pongrabbit-MD ${version}.${ext}"
+        }
+      ],
+      "icon": "build/icon.png",
+      "executableName": "pongrabbit-MD",
+      "fileAssociations": [
+        {
+          "ext": "md",
+          "name": "pongrabbit-MD Markdown",
+          "description": "Markdown 文档",
+          "role": "Editor"
+        },
+        {
+          "ext": "markdown",
+          "name": "pongrabbit-MD Markdown",
+          "description": "Markdown 文档",
+          "role": "Editor"
+        }
+      ]
+    },
+    "mac": {
+      "artifactName": "pongrabbit-MD-${version}.${ext}",
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "CFBundleName": "pongrabbit-MD",
+        "CFBundleDisplayName": "pongrabbit-MD",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Markdown 文档",
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown",
+              "public.plain-text"
+            ],
+            "CFBundleTypeExtensions": ["md", "markdown", "txt"]
+          }
+        ]
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "pongrabbit-MD"
+    },
+    "files": ["src/**/*", "node_modules/**/*"],
+    "extraResources": [
+      {
+        "from": "sounds/",
+        "to": "sounds/"
+      }
+    ]
+  },
+  "keywords": ["markdown", "editor"],
+  "author": "pongrabbit",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^11.2.0"
+  }
+}

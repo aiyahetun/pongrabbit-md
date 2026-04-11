@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-surface-variant": "#414755",
+                    "surface-dim": "#d9dade",
+                    "surface-bright": "#f9f9fe",
+                    "surface-container": "#ededf2",
+                    "error": "#ba1a1a",
+                    "on-primary-fixed": "#001a41",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-container": "#fffbff",
+                    "on-primary-fixed-variant": "#004493",
+                    "tertiary": "#9e3d00",
+                    "on-secondary-fixed": "#1a1b1f",
+                    "on-background": "#1a1c1f",
+                    "on-tertiary-fixed-variant": "#7c2e00",
+                    "secondary": "#5d5e63",
+                    "on-error-container": "#93000a",
+                    "error-container": "#ffdad6",
+                    "inverse-on-surface": "#f0f0f5",
+                    "tertiary-fixed-dim": "#ffb595",
+                    "on-surface": "#1a1c1f",
+                    "surface-container-high": "#e8e8ed",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-highest": "#e2e2e7",
+                    "surface": "#f9f9fe",
+                    "primary-fixed-dim": "#adc6ff",
+                    "tertiary-container": "#c64f00",
+                    "on-error": "#ffffff",
+                    "secondary-fixed-dim": "#c6c6cb",
+                    "secondary-container": "#e0dfe4",
+                    "secondary-fixed": "#e3e2e7",
+                    "background": "#f9f9fe",
+                    "surface-variant": "#e2e2e7",
+                    "surface-container-low": "#f3f3f8",
+                    "on-secondary-fixed-variant": "#46464b",
+                    "primary": "#0058bc",
+                    "on-secondary": "#ffffff",
+                    "primary-fixed": "#d8e2ff",
+                    "outline-variant": "#c1c6d7",
+                    "outline": "#717786",
+                    "primary-container": "#0070eb",
+                    "surface-tint": "#005bc1",
+                    "inverse-primary": "#adc6ff",
+                    "inverse-surface": "#2e3034",
+                    "on-tertiary-fixed": "#351000",
+                    "on-primary-container": "#fefcff",
+                    "on-secondary-container": "#626267"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+            vertical-align: middle;
+            font-size: 20px;
+        }
+        .vibrancy-sidebar {
+            background-color: rgba(243, 243, 248, 0.7);
+            backdrop-filter: blur(30px);
+        }
+        .vibrancy-toolbar {
+            background-color: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(30px);
+        }
+        .writing-canvas {
+            caret-color: #007AFF;
+        }
+        /* No-line structural separation strategy */
+        .sidebar-separation {
+            background-color: #f3f3f8; /* surface-container-low */
+        }
+        .editor-separation {
+            background-color: #ffffff; /* surface-container-lowest */
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface select-none overflow-hidden">
+<!-- Top Navigation Shell (TopAppBar) -->
+<header class="fixed top-0 w-full z-50 flex items-center justify-between px-4 h-12 w-full vibrancy-toolbar shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
+<!-- macOS Traffic Lights Container -->
+<div class="flex items-center gap-2 ml-2">
+<div class="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+<div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+<div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
+<span class="ml-12 text-lg font-bold text-zinc-900 font-headline tracking-tight">Markdown Editor</span>
+</div>
+<!-- Toolbar Actions -->
+<div class="flex items-center gap-1">
+<button class="p-2 rounded-lg hover:bg-zinc-200/50 transition-all duration-200 scale-95 active:opacity-80 text-zinc-500">
+<span class="material-symbols-outlined leading-none">format_bold</span>
+</button>
+<button class="p-2 rounded-lg hover:bg-zinc-200/50 transition-all duration-200 scale-95 active:opacity-80 text-zinc-500">
+<span class="material-symbols-outlined leading-none">format_italic</span>
+</button>
+<button class="p-2 rounded-lg hover:bg-zinc-200/50 transition-all duration-200 scale-95 active:opacity-80 text-zinc-500">
+<span class="material-symbols-outlined leading-none">format_list_bullet</span>
+</button><div class="flex items-center p-0.5 bg-zinc-200/40 rounded-lg mr-1">
+<button class="p-1.5 rounded-md bg-white shadow-sm text-zinc-900 transition-all duration-200" title="Light Mode">
+<span class="material-symbols-outlined leading-none">light_mode</span>
+</button>
+<button class="p-1.5 rounded-md hover:bg-zinc-200/50 text-zinc-500 transition-all duration-200" title="Dark Mode">
+<span class="material-symbols-outlined leading-none">dark_mode</span>
+</button>
+<button class="p-1.5 rounded-md hover:bg-zinc-200/50 text-zinc-500 transition-all duration-200" title="Glass Theme">
+<span class="material-symbols-outlined leading-none">opacity</span>
+</button>
+</div>
+<div class="w-[1px] h-4 bg-outline-variant/20 mx-1"></div>
+<button class="p-2 rounded-lg hover:bg-zinc-200/50 transition-all duration-200 scale-95 active:opacity-80 text-zinc-500">
+<span class="material-symbols-outlined leading-none">link</span>
+</button>
+<button class="p-2 rounded-lg hover:bg-zinc-200/50 transition-all duration-200 scale-95 active:opacity-80 text-zinc-500">
+<span class="material-symbols-outlined leading-none">image</span>
+</button>
+</div>
+<!-- Right Side Utility -->
+<div class="flex items-center gap-4">
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-b from-primary to-primary-container text-on-primary text-sm font-semibold shadow-sm hover:opacity-90 transition-all active:scale-95">
+<span class="material-symbols-outlined text-[18px] leading-none">outbox</span>
+<span>Publish</span>
+</button>
+</div>
+</header>
+<div class="flex h-screen pt-12">
+<!-- Side Navigation Shell (SideNavBar) -->
+<aside class="h-screen w-64 fixed left-0 top-0 flex flex-col pt-16 pb-4 w-64 border-r border-transparent vibrancy-sidebar">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg overflow-hidden bg-primary-fixed flex items-center justify-center">
+<img class="w-full h-full object-cover" data-alt="minimalist user avatar photo with soft lighting and neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDY1Teput8RZ8WV1InkCooDEoaVNnWac13Z1XbJVkFWSpRXzq260cBrOK9WZ4tXRYD4Acjxx1lW7Y-zteS_g-fB8KB-hEwNQZN97qISz_UtJMNE5sU3MIXUZccwg6cqxdlmBYh9vPPQYdBNowRqOpcR0J_kX1xMBcAlsWreAWKrIHYPAdCa3IB7c-LQj_lJ_lik7-lclAxT3FGiHDxvj7dls5Ji4JauPA-BTjzd1rpWa7UZSsXtaoqVePs7Nu4lsIy8B-A5TM6IICE"/>
+</div>
+<div>
+<h2 class="text-sm font-black text-zinc-800 font-headline">Library</h2>
+<p class="text-[10px] uppercase tracking-wider text-zinc-500 font-label">Local Storage</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-2 bg-zinc-200/60 text-zinc-900 rounded-lg mx-2 transition-all" href="#">
+<span class="material-symbols-outlined text-blue-600 leading-none">folder_open</span>
+<span class="font-label text-[13px] tracking-wide">All Files</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-zinc-600 hover:bg-zinc-200/30 rounded-lg mx-2 transition-all" href="#">
+<span class="material-symbols-outlined leading-none">description</span>
+<span class="font-label text-[13px] tracking-wide">Drafts</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-zinc-600 hover:bg-zinc-200/30 rounded-lg mx-2 transition-all" href="#">
+<span class="material-symbols-outlined leading-none">send</span>
+<span class="font-label text-[13px] tracking-wide">Published</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-zinc-600 hover:bg-zinc-200/30 rounded-lg mx-2 transition-all" href="#">
+<span class="material-symbols-outlined leading-none">delete</span>
+<span class="font-label text-[13px] tracking-wide">Trash</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<div class="p-4 rounded-xl bg-surface-container-high/50">
+<p class="text-[11px] font-bold text-zinc-400 mb-2 uppercase tracking-tighter">Pro Status</p>
+<div class="w-full bg-zinc-200 h-1 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-3/4"></div>
+</div>
+<p class="text-[10px] mt-2 text-zinc-500">75% of 10GB used</p>
+</div>
+</div>
+</aside>
+<!-- Main Editor Canvas -->
+<main class="ml-64 flex-1 bg-surface-container-lowest flex flex-col relative overflow-y-auto">
+<div class="max-w-3xl mx-auto w-full pt-20 pb-32 px-12">
+<div class="mb-12">
+<span class="text-xs font-label uppercase tracking-[0.2em] text-tertiary mb-2 block">Document</span>
+<h1 class="text-[3.5rem] font-extrabold font-headline leading-tight tracking-tight text-on-surface" contenteditable="true">
+                        The Translucent Editor
+                    </h1>
+</div>
+<div class="prose prose-zinc prose-lg writing-canvas font-body text-zinc-700 space-y-8" contenteditable="true">
+<p class="text-xl leading-relaxed">
+                        This design system is engineered to transform a functional Markdown utility into a premium editorial environment. Moving beyond the rigid, opaque structures of traditional desktop software, our <strong class="text-primary">Creative North Star</strong> is "The Translucent Editor."
+                    </p>
+<div class="grid grid-cols-2 gap-8 my-12">
+<div class="p-6 rounded-xl bg-surface-container-low border-none shadow-sm">
+<span class="material-symbols-outlined text-primary mb-3 leading-none">auto_awesome</span>
+<h3 class="font-headline font-bold text-lg mb-2">Modern Layouts</h3>
+<p class="text-sm text-zinc-500 leading-relaxed">Utilizing bento-grid structures for a balanced, high-fidelity experience.</p>
+</div>
+<div class="p-6 rounded-xl bg-surface-container-low border-none shadow-sm">
+<span class="material-symbols-outlined text-tertiary mb-3 leading-none">blur_on</span>
+<h3 class="font-headline font-bold text-lg mb-2">Glassmorphism</h3>
+<p class="text-sm text-zinc-500 leading-relaxed">30px backdrop blurs paired with tonal shifts for true depth.</p>
+</div>
+</div>
+<h2 class="text-2xl font-headline font-bold text-zinc-900">Editorial Authority</h2>
+<p>
+                        We use a dual-font system to balance modern tech with classical editorial vibes. The contrast between the wide, expressive <span class="font-headline font-semibold">Manrope</span> headlines and the tight, functional <span class="font-body">Inter</span> body text creates an "Editorial" hierarchy that feels curated rather than generic.
+                    </p>
+<blockquote class="border-l-4 border-primary pl-6 py-2 italic text-zinc-500 text-xl">
+                        "White space is not just empty space, it is a structural element of premium design."
+                    </blockquote>
+<img class="rounded-xl shadow-2xl my-10" data-alt="clean minimal workspace with a laptop on a white desk with a coffee cup and soft natural lighting from a window" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAx0CSBR7iyYoIgiAaBm4FHw0dgr0JZ_XELyL5Dena5ruGlAqWMZbQm70XemlKDvOa32CgX2Z3Iz8LOGneaE3GocyHecewH-w6kiVdyXenk4okLsvyj5S9yGte7yWuelWgcafn5BDIbWGTkWnlhL9kADi3Iak-ASN_4q2On5_JqJvoCUgkkLYgRjgF9JiLgx_1qRm7JsJ9Ynr6zr_i8XzubG-dwl70L67Snxy8pL2ywGFHjDAKdxaMdNt-iMPaIh3yio892pWk9MDI"/>
+<p>
+                        Our palette leverages Material Design token naming but applies them through a high-end macOS lens. By abandoning traditional structural lines in favor of ambient light simulation, the UI feels lightweight and native.
+                    </p>
+</div>
+</div>
+</main>
+<!-- Bottom Status Bar (BottomNavBar) -->
+<footer class="fixed bottom-0 w-full h-6 flex justify-end items-center px-4 gap-6 z-50 vibrancy-toolbar text-zinc-500">
+<div class="flex items-center gap-1.5 hover:text-zinc-900 transition-colors cursor-default">
+<span class="material-symbols-outlined text-[14px] leading-none">description</span>
+<span class="font-label text-[11px] uppercase tracking-[0.05em] font-medium">250 Words</span>
+</div>
+<div class="flex items-center gap-1.5 hover:text-zinc-900 transition-colors cursor-default">
+<span class="material-symbols-outlined text-[14px] leading-none">code</span>
+<span class="font-label text-[11px] uppercase tracking-[0.05em] font-medium">UTF-8</span>
+</div>
+<div class="flex items-center gap-1.5 text-blue-600 transition-colors cursor-default">
+<span class="material-symbols-outlined text-[14px] leading-none">segment</span>
+<span class="font-label text-[11px] uppercase tracking-[0.05em] font-bold">Markdown</span>
+</div>
+</footer>
+</div>
+</body></html>

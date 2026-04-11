@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pongrabbit-MD</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="../../node_modules/highlight.js/styles/github.min.css"      id="hljs-light">
+<link rel="stylesheet" href="../../node_modules/highlight.js/styles/github-dark.min.css" id="hljs-dark" disabled>
+<script src="../../node_modules/marked/marked.min.js"></script>
+</head>
+<body class="theme-light" id="app-body">
+<div id="bg-layer"></div>
+<div id="glass-overlay"></div>
+
+<!-- 标题栏 -->
+<div id="titlebar">
+  <div id="titlebar-drag">
+    <img id="app-icon" src="icons/app-icon.png" width="20" height="20" alt="" decoding="async">
+    <span id="app-title">pongrabbit-MD</span>
+    <span id="file-name">无题文档</span>
+    <span id="file-modified" class="hidden">●</span>
+  </div>
+  <div id="titlebar-controls">
+    <button type="button" class="tbtn" id="btn-minimize" title="最小化">─</button>
+    <button type="button" class="tbtn" id="btn-maximize" title="最大化">□</button>
+    <button type="button" class="tbtn danger" id="btn-close" title="关闭">✕</button>
+  </div>
+</div>
+
+<!-- 模式栏 + 顶部操作 -->
+<div id="mode-bar">
+  <div id="mode-tabs" class="mode-tabs-shell">
+    <button type="button" class="mode-tab active" id="tab-wysiwyg" title="所见即所得编辑">✏ 可视化</button>
+    <button type="button" class="mode-tab" id="tab-markdown" title="Markdown 源码">⌨ 源码</button>
+    <button type="button" class="mode-tab" id="tab-preview" title="仅预览（只读）">👁 预览</button>
+    <button type="button" class="mode-tab" id="tab-split" title="一侧编辑、一侧预览">⊞ 分栏预览</button>
+  </div>
+  <div id="mode-actions">
+    <button type="button" class="action-btn" id="btn-new">新建</button>
+    <button type="button" class="action-btn" id="btn-open">打开</button>
+    <button type="button" class="action-btn" id="btn-save">保存</button>
+    <div class="tool-sep"></div>
+    <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
+    <button type="button" class="action-btn" id="btn-export-html">导出 HTML</button>
+    <div class="tool-sep"></div>
+    <button type="button" class="action-btn btn-music-pill" id="btn-music" title="音效与音乐">
+      <svg class="btn-music-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
+      <span>音效与音乐</span>
+    </button>
+    <div class="tool-sep"></div>
+    <div class="theme-switcher" role="group" aria-label="主题">
+      <button type="button" class="theme-seg" id="btn-theme-light" title="浅色主题" aria-pressed="false">
+        <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2.5v1.8M12 19.7V22M4.2 12H2.5M21.5 12H19.8M5.6 5.6 4.3 4.3M19.7 19.7l-1.3-1.3M5.6 18.4 4.3 19.7M19.7 4.3l-1.3 1.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
+      </button>
+      <button type="button" class="theme-seg" id="btn-theme-dark" title="深色主题" aria-pressed="false">
+        <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+      </button>
+      <button type="button" class="theme-seg" id="btn-theme-glass" title="毛玻璃主题" aria-pressed="false">
+        <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 3.2c-2.8 4.3-5.6 6.9-5.6 10.1a5.6 5.6 0 0 0 11.2 0c0-3.2-2.8-5.8-5.6-10.1z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8.2 12.5h7.6" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><path d="M9.5 15.2h5" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" opacity=".45"/></svg>
+      </button>
+    </div>
+    <div class="tool-sep"></div>
+    <button type="button" class="action-btn" id="btn-settings" title="设置">⚙ 设置</button>
+  </div>
+</div>
+
+<!-- 富文本工具栏 -->
+<div id="rich-toolbar">
+  <select id="heading-select">
+    <option value="p">正文</option>
+    <option value="h1">一级标题</option>
+    <option value="h2">二级标题</option>
+    <option value="h3">三级标题</option>
+    <option value="h4">四级标题</option>
+  </select>
+  <div class="tool-sep rich-toolbar-sep"></div>
+  <div class="fmt-pill" id="rich-fmt-pill">
+  <button type="button" class="fmt-btn" id="r-bold" title="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="r-italic" title="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="r-underline" title="下划线"><u>U</u></button>
+  <button type="button" class="fmt-btn" id="r-strike" title="删除线"><s>S</s></button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="r-align-left" title="左对齐">⬅</button>
+  <button type="button" class="fmt-btn" id="r-align-center" title="居中">↔</button>
+  <button type="button" class="fmt-btn" id="r-align-right" title="右对齐">➡</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="r-ul" title="无序列表">•≡</button>
+  <button type="button" class="fmt-btn" id="r-ol" title="有序列表">1≡</button>
+  <button type="button" class="fmt-btn" id="r-task" title="任务列表">☑</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="r-quote" title="引用">❝</button>
+  <button type="button" class="fmt-btn" id="r-code" title="行内代码">`</button>
+  <button type="button" class="fmt-btn" id="r-codeblock" title="代码块">&lt;/&gt;</button>
+  <button type="button" class="fmt-btn" id="r-link" title="链接">🔗</button>
+  <button type="button" class="fmt-btn" id="r-table" title="表格">▦</button>
+  <button type="button" class="fmt-btn" id="r-hr" title="分割线">─</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-r" title="查找（Ctrl+F）">🔍 查找</button>
+  </div>
+</div>
+
+<!-- MD 工具栏 -->
+<div id="md-toolbar" style="display:none">
+  <div class="fmt-pill md-fmt-pill">
+  <button type="button" class="fmt-btn" id="fmt-bold" title="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="fmt-italic" title="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="fmt-strike" title="删除线"><s>S</s></button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="fmt-h1" title="一级标题">一级</button>
+  <button type="button" class="fmt-btn" id="fmt-h2" title="二级标题">二级</button>
+  <button type="button" class="fmt-btn" id="fmt-h3" title="三级标题">三级</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="fmt-quote" title="引用">引用</button>
+  <button type="button" class="fmt-btn" id="fmt-code" title="行内代码">代码</button>
+  <button type="button" class="fmt-btn" id="fmt-codeblock" title="代码块">代码块</button>
+  <button type="button" class="fmt-btn" id="fmt-link" title="链接">链接</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn" id="fmt-ul" title="无序列表">无序</button>
+  <button type="button" class="fmt-btn" id="fmt-ol" title="有序列表">有序</button>
+  <button type="button" class="fmt-btn" id="fmt-task" title="任务列表">☑</button>
+  <button type="button" class="fmt-btn" id="fmt-table" title="表格">表格</button>
+  <button type="button" class="fmt-btn" id="fmt-hr" title="分割线">分割线</button>
+  <span class="fmt-pill-sep" aria-hidden="true"></span>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-md" title="查找（Ctrl+F）">🔍 查找</button>
+  </div>
+</div>
+
+<!-- 查找栏 -->
+<div id="find-bar" style="display:none">
+  <input type="text" id="find-input" placeholder="查找…">
+  <input type="text" id="replace-input" placeholder="替换为…">
+  <button type="button" id="find-prev" title="上一处">↑</button>
+  <button type="button" id="find-next" title="下一处">↓</button>
+  <button type="button" id="find-replace-one">替换</button>
+  <button type="button" id="find-replace-all">全部替换</button>
+  <span id="find-count"></span>
+  <button type="button" id="find-close" title="关闭查找">✕</button>
+</div>
+
+<!-- 主区域 -->
+<div id="main-area">
+  <div id="sidebar" style="display:none">
+    <div class="sidebar-header">最近文件</div>
+    <div id="recent-list"></div>
+  </div>
+
+  <!-- 所见即所得 -->
+  <div id="wysiwyg-pane" class="editor-pane">
+    <div id="rich-editor" contenteditable="true" spellcheck="false"
+      data-placeholder="开始写作…&#10;&#10;直接输入文字，选中后点击工具栏设置格式。&#10;点击上方标签可切换到源码（Markdown）模式。"></div>
+  </div>
+
+  <!-- Markdown 源码 -->
+  <div id="md-pane" class="editor-pane" style="display:none">
+    <textarea id="md-editor" spellcheck="false" autocomplete="off"
+      placeholder="# 开始写作…&#10;&#10;支持完整 Markdown 语法"></textarea>
+  </div>
+
+  <!-- 分隔条 -->
+  <div id="resizer" style="display:none"></div>
+
+  <!-- 预览 -->
+  <div id="preview-pane" style="display:none">
+    <div id="preview-content"></div>
+  </div>
+</div>
+
+<!-- 状态栏 -->
+<div id="statusbar">
+  <span id="status-words">字数 0</span>
+  <span id="status-chars">字符 0</span>
+  <span id="status-lines">行 1</span>
+  <div class="status-sep"></div>
+  <span id="status-file">未保存</span>
+  <div class="status-right">
+    <span id="status-mode">可视化</span>
+    <span id="status-encoding">UTF-8</span>
+    <div id="music-status" style="display:none">
+      <span class="wave-icon"><span class="wb"></span><span class="wb"></span><span class="wb"></span><span class="wb"></span></span>
+      <span id="music-name">--</span>
+    </div>
+  </div>
+</div>
+
+<!-- 表格对话框 -->
+<div id="table-dialog" class="dialog" style="display:none">
+  <div class="dialog-box">
+    <div class="dialog-title">插入表格</div>
+    <div class="dialog-row"><label>行数</label><input type="number" id="table-rows" value="3" min="1" max="20"></div>
+    <div class="dialog-row"><label>列数</label><input type="number" id="table-cols" value="3" min="1" max="10"></div>
+    <div class="dialog-row"><label>含表头</label><input type="checkbox" id="table-header" checked></div>
+    <div class="dialog-btns">
+      <button id="table-cancel">取消</button>
+      <button id="table-ok" class="primary-btn">插入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 链接对话框 -->
+<div id="link-dialog" class="dialog" style="display:none">
+  <div class="dialog-box">
+    <div class="dialog-title">插入链接</div>
+    <div class="dialog-row"><label>文字</label><input type="text" id="link-text" placeholder="链接文字"></div>
+    <div class="dialog-row"><label>链接地址</label><input type="text" id="link-url" placeholder="https://"></div>
+    <div class="dialog-btns">
+      <button id="link-cancel">取消</button>
+      <button id="link-ok" class="primary-btn">插入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 音乐面板 — 参考 彭兔子MD/音效与音乐按钮效果 -->
+<div id="music-panel" class="side-panel" style="display:none">
+  <div class="panel-header music-panel-header">
+    <div class="music-panel-title-block">
+      <span class="music-panel-title">音效与音乐</span>
+      <p class="music-panel-subtitle">Audio &amp; Ambience</p>
+    </div>
+    <button type="button" class="panel-close music-panel-close" id="music-panel-close" title="关闭">✕</button>
+  </div>
+  <div class="panel-section music-panel-section">
+    <div class="music-section-head">
+      <span class="panel-label music-lib-label">白噪音库</span>
+      <span class="music-presets-tag">PRESETS</span>
+    </div>
+    <div class="noise-grid">
+      <button type="button" class="noise-btn" data-type="rain"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2c-.85 3.15-3.55 5.75-3.55 8.75a3.55 3.55 0 1 0 7.1 0c0-3-2.7-5.6-3.55-8.75z"/></svg></span><span class="noise-btn-label">雨声</span></button>
+      <button type="button" class="noise-btn" data-type="forest"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4 8 17h8L12 4zm-1 13h2v4h-2v-4z"/></svg></span><span class="noise-btn-label">森林</span></button>
+      <button type="button" class="noise-btn" data-type="ocean"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M2 14.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2v-1.5zm0-4.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2V10z"/></svg></span><span class="noise-btn-label">海浪</span></button>
+      <button type="button" class="noise-btn" data-type="wind"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg noise-ico-stroke" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4 9h10a2.5 2.5 0 1 0 0-1H4m0 4.5h14M4 18h8a2 2 0 1 1 0 1"/></svg></span><span class="noise-btn-label">风声</span></button>
+      <button type="button" class="noise-btn" data-type="fire"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c-1.25 3.6-4.1 4.6-4.1 8.2 0 2.3 1.3 4.2 3.2 5.1.45-1.05 1.9-3.1 1.9-5.1 0-3.6-2.85-4.6-4.1-8.2z"/></svg></span><span class="noise-btn-label">篝火</span></button>
+      <button type="button" class="noise-btn" data-type="cafe"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6 6h9v4.5A3.25 3.25 0 0 1 11.75 14h-2.5A3.25 3.25 0 0 1 6 10.5V6zm11 3.5h1.5a2 2 0 0 1 2 2v.4a2 2 0 0 1-2 2H17V9.5zM8 17.25h6v1.5H8v-1.5z"/></svg></span><span class="noise-btn-label">咖啡馆</span></button>
+    </div>
+    <button type="button" id="btn-stop-noise" class="stop-btn music-stop-btn" style="display:none">停止环境音</button>
+  </div>
+  <div class="panel-section music-panel-section">
+    <span class="panel-label music-source-label">自定义音频源</span>
+    <div class="music-source-card">
+      <span id="music-folder-display" class="music-folder-path">未选择目录</span>
+      <button type="button" id="btn-pick-music-folder" class="music-browse-btn">浏览</button>
+    </div>
+    <div id="music-list"></div>
+    <span class="panel-label music-mode-label">播放模式</span>
+    <div class="play-mode-row">
+      <button type="button" class="mode-btn active" data-mode="order" title="按列表顺序依次播放">顺序</button>
+      <button type="button" class="mode-btn" data-mode="shuffle" title="随机挑选下一首">随机</button>
+      <button type="button" class="mode-btn" data-mode="loop" title="单曲循环当前曲目">循环</button>
+    </div>
+  </div>
+  <div class="panel-section music-panel-bottom">
+    <div class="music-volume-block">
+      <div class="music-volume-head">
+        <span class="music-volume-title"><span class="music-volume-accent">音量</span> <span id="volume-display">60%</span></span>
+      </div>
+      <input type="range" id="volume-slider" min="0" max="100" value="60" step="1">
+    </div>
+    <div class="music-playback-row">
+      <div class="music-transport">
+        <button type="button" class="music-nav-btn" id="btn-prev-track" title="上一曲" aria-label="上一曲">
+          <svg class="music-nav-ico music-nav-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 5h2v14H6V5zm9 2L7 12l8 5V7z"/></svg>
+        </button>
+        <button type="button" id="btn-play-pause" class="play-btn" title="播放 / 暂停" aria-label="播放或暂停">▶</button>
+        <button type="button" class="music-nav-btn" id="btn-next-track" title="下一曲" aria-label="下一曲">
+          <svg class="music-nav-ico music-nav-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7l8 5-8 5V7zM17 5h2v14h-2V5z"/></svg>
+        </button>
+      </div>
+      <div class="music-now-playing">
+        <p id="current-track-name" class="music-track-title">--</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设置面板 -->
+<div id="settings-panel" class="side-panel" style="display:none">
+  <div class="panel-header"><span>⚙ 设置</span><button type="button" class="panel-close" id="settings-panel-close" title="关闭">✕</button></div>
+  <div class="panel-section">
+    <div class="panel-label">字体大小 <span id="font-size-display">15px</span></div>
+    <input type="range" id="font-size-slider" min="12" max="24" value="15" step="1">
+  </div>
+  <div class="panel-section">
+    <div class="panel-label">行高 <span id="line-height-display">1.8</span></div>
+    <input type="range" id="line-height-slider" min="14" max="28" value="18" step="1">
+  </div>
+  <div class="panel-section">
+    <div class="panel-label">字体</div>
+    <select id="font-family-select">
+      <option value="system">系统默认（微软雅黑）</option>
+      <option value="songti">宋体</option>
+      <option value="kaiti">楷体</option>
+      <option value="mono">等宽字体</option>
+    </select>
+  </div>
+  <div class="panel-section">
+    <label class="toggle-label">
+      <input type="checkbox" id="word-wrap-toggle" checked>
+      <span class="toggle-track"></span>自动换行
+    </label>
+  </div>
+  <div class="panel-section" id="glass-settings" style="display:none">
+    <div class="panel-label">毛玻璃背景图片</div>
+    <div class="bg-btns">
+      <button type="button" id="btn-pick-bg">选择背景图</button>
+      <button type="button" id="btn-clear-bg">清除背景</button>
+    </div>
+    <div id="bg-path-display"></div>
+    <div class="panel-label" style="margin-top:12px">模糊度 <span id="blur-display">20px</span></div>
+    <input type="range" id="blur-slider" min="4" max="40" value="20" step="1">
+    <div class="panel-label" style="margin-top:12px">遮罩透明度 <span id="overlay-display">15%</span></div>
+    <input type="range" id="overlay-slider" min="0" max="60" value="15" step="1">
+  </div>
+</div>
+
+<div id="panel-mask" style="display:none"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

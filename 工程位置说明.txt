@@ -1,0 +1,28 @@
+pongrabbit-MD — 工程目录与启动方式
+=====================================
+
+【本机开发工程目录（主路径）】
+  c:\Users\win\Desktop\彭兔子MD\mobimark_source\mobimark
+  在此目录执行 npm install / npm start 即可开发。
+
+  完整工程应至少包含：
+  - package.json、node_modules
+  - src\main\main.js、src\main\preload.js（Electron 主进程）
+  - src\renderer\（界面）
+  - sounds\（可为空，打包用）
+  若只有 renderer 三个文件而没有 src\main，则无法运行，需补全主进程文件。
+
+1. 启动脚本（windows / mac）会按顺序查找含 package.json 的目录：
+   - pengtuzi-md\                    （可选备用路径，与脚本同级）
+   - mobimark_source\mobimark\       （上述主路径）
+
+2. 若磁盘上还没有上述完整工程，请从仓库同步或复制全部文件到 pengtuzi-md。
+
+3. 启动
+   - Windows：双击 windows\install_and_run.bat
+     （脚本为兼容 cmd.exe 使用英文提示；若曾报「else 不是内部或外部命令」已修复为嵌套 if。）
+   - macOS：首次在终端执行 chmod +x mac/*.command，再双击 mac\install_and_run.command
+
+4. 打包
+   - Windows：windows\build_exe.bat
+   - macOS：mac\build-mac.command
