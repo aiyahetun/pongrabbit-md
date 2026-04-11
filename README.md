@@ -64,14 +64,19 @@ npm start
 
 ---
 
-## 与 GitHub 同步
-
-若尚未关联远程仓库，在本地提交后可执行：
+## 克隆本仓库
 
 ```bash
-git remote add origin https://github.com/<你的用户名>/<仓库名>.git
+git clone https://github.com/aiyahetun/pongrabbit-md.git
+cd pongrabbit-md
+```
+
+## 参与贡献 / 继续推送
+
+若你在其他机器上修改后需推送，请确保已配置 `git config user.name` 与 `user.email`，并具备该仓库的写入权限：
+
+```bash
+git remote add origin https://github.com/aiyahetun/pongrabbit-md.git
 git branch -M main
 git push -u origin main
 ```
-
-将 `<你的用户名>`、`<仓库名>` 换成你在 GitHub 上创建的空仓库信息；首次推送需完成 GitHub 登录或 Personal Access Token 配置。
