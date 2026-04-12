@@ -76,6 +76,16 @@ pongrabbit-md/
 
 ---
 
+## 喜欢这个项目？
+
+如果 pongrabbit-MD 用得顺手，可以**请我喝杯奶茶**——用微信扫下面二维码即可（**完全自愿**，不影响任何功能）。
+
+![微信支付 — 赞赏支持](docs/assets/wechat-sponsor.png)
+
+> 说明：这是个人收款码，与 GitHub Sponsors 等平台无关；金额随意，心意到就好。
+
+---
+
 ## 许可证
 
 MIT（见 `mobimark_source/mobimark/package.json`）。
