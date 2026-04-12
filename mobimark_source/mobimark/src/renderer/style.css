@@ -32,6 +32,7 @@ html,body{height:100%;overflow:hidden}
 html{background:#fff}
 /* theme-glass 在 body 上，旧写法 .theme-glass html 永不匹配 → html 保持白底，负 z-index 的 #bg-layer 被挡在下面 */
 html:has(body.theme-glass){background:transparent}
+
 button{cursor:pointer;border:none;background:none;outline:none;font-family:var(--font-ui)}
 input,select,textarea{outline:none}
 
@@ -89,11 +90,11 @@ input,select,textarea{outline:none}
    ════════════════════════════════════════════════════════════ */
 .theme-glass {
   --bg-win:       transparent;
-  --bg-bar:       rgba(255,255,255,0.09);
-  --bg-editor:    rgba(255,255,255,0.10);
-  --bg-preview:   rgba(255,255,255,0.07);
-  --bg-panel:     rgba(255,255,255,0.22);
-  --bg-sidebar:   rgba(255,255,255,0.08);
+  --bg-bar:       rgba(255,255,255,0.065);
+  --bg-editor:    rgba(255,255,255,0.072);
+  --bg-preview:   rgba(255,255,255,0.055);
+  --bg-panel:     rgba(255,255,255,0.16);
+  --bg-sidebar:   rgba(255,255,255,0.058);
   --bg-hover:     rgba(255,255,255,0.16);
   --bg-active:    rgba(255,255,255,0.24);
   --bd:           rgba(255,255,255,0.22);
@@ -111,12 +112,12 @@ input,select,textarea{outline:none}
 
 /* 毛玻璃 + 自定义背景图：顶栏/侧栏须半透明才能透出下方 #glass-overlay（模糊+遮罩）与壁纸；过实（原 ~0.88）会完全挡住，表现为「无壁纸、滑块无效」 */
 .theme-glass.glass-has-bg {
-  --bg-bar:       rgba(255, 255, 255, 0.38);
-  --bg-editor:    rgba(255, 255, 255, 0.84);
-  --bg-preview:   rgba(255, 255, 255, 0.82);
-  --bg-panel:     rgba(255, 255, 255, 0.96);
+  --bg-bar:       rgba(255, 255, 255, 0.22);
+  --bg-editor:    rgba(255, 255, 255, 0.62);
+  --bg-preview:   rgba(255, 255, 255, 0.58);
+  --bg-panel:     rgba(255, 255, 255, 0.86);
   /* 侧栏比顶栏略实：透出壁纸仍可见，但避免深色底图衬得灰字发虚 */
-  --bg-sidebar:   rgba(255, 255, 255, 0.64);
+  --bg-sidebar:   rgba(255, 255, 255, 0.40);
   --bg-hover:     rgba(53, 97, 144, 0.14);
   --bg-active:    rgba(53, 97, 144, 0.22);
   --bd:           rgba(53, 97, 144, 0.18);
@@ -124,17 +125,19 @@ input,select,textarea{outline:none}
   --t2:           #334155;
   --t3:           #5c6b7a;
   --t4:           #7a8b9a;
-  --pill-glass:   rgba(255, 255, 255, 0.52);
+  --pill-glass:   rgba(255, 255, 255, 0.40);
 }
+
+/* 壁纸上的暗角尽量轻，避免「加背景后整体发闷」 */
 .theme-glass.glass-has-bg #bg-layer::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0%, transparent 38%, rgba(0, 0, 0, 0.22) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.03) 0%, transparent 40%, rgba(0, 0, 0, 0.06) 100%);
 }
 .theme-glass.glass-has-bg #mode-tabs.mode-tabs-shell {
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.34);
   border: 1px solid rgba(53, 97, 144, 0.14);
 }
 .theme-glass.glass-has-bg .mode-tab {
@@ -142,7 +145,7 @@ input,select,textarea{outline:none}
   font-weight: 600;
 }
 .theme-glass.glass-has-bg .mode-tab.active {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.90);
   color: var(--t1);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
@@ -151,7 +154,7 @@ input,select,textarea{outline:none}
   font-weight: 600;
 }
 .theme-glass.glass-has-bg .fmt-pill {
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.34);
   border: 1px solid rgba(53, 97, 144, 0.14);
 }
 .theme-glass.glass-has-bg .fmt-btn {
@@ -159,17 +162,17 @@ input,select,textarea{outline:none}
   color: var(--t2);
 }
 .theme-glass.glass-has-bg #heading-select {
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.42);
   border-color: rgba(53, 97, 144, 0.2);
 }
 .theme-glass.glass-has-bg .btn-music-pill {
-  --music-pill-bg: rgba(255, 255, 255, 0.50);
+  --music-pill-bg: rgba(255, 255, 255, 0.38);
   --music-pill-bd: rgba(53, 97, 144, 0.16);
-  --music-pill-bg-hover: rgba(255, 255, 255, 0.62);
+  --music-pill-bg-hover: rgba(255, 255, 255, 0.52);
   --music-pill-bd-hover: rgba(53, 97, 144, 0.22);
 }
 .theme-glass.glass-has-bg .theme-switcher {
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.34);
   border: 1px solid rgba(53, 97, 144, 0.12);
 }
 .theme-glass.glass-has-bg .theme-seg {
@@ -177,7 +180,7 @@ input,select,textarea{outline:none}
   font-weight: 600;
 }
 .theme-glass.glass-has-bg .theme-seg.theme-seg-active {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.88);
   color: #0f172a;
 }
 .theme-glass.glass-has-bg #panel-mask {
@@ -192,12 +195,71 @@ input,select,textarea{outline:none}
   opacity: 1;
 }
 .theme-glass.glass-has-bg #music-panel .music-source-card {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.78);
   border-color: rgba(53, 97, 144, 0.14);
 }
 .theme-glass.glass-has-bg #find-bar input {
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.82);
   border-color: rgba(53, 97, 144, 0.18);
+}
+
+/*
+ * 浅色系统 + 浅色壁纸 + 深色字：顶栏/侧栏透光时字与暗底对比不足。
+ * 仅在此媒体条件下生效，避免覆盖下方 prefers-color-scheme:dark 下的浅色字方案。
+ */
+@media not (prefers-color-scheme: dark) {
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) {
+    --bg-bar:       rgba(252, 253, 255, 0.40);
+    --bg-sidebar:   rgba(252, 253, 255, 0.64);
+    --bd:           rgba(53, 97, 144, 0.28);
+    --t1:           #243447;
+    --t2:           #3d5168;
+    --t3:           #5a6d82;
+    --t4:           #758696;
+    --bg-hover:     rgba(53, 97, 144, 0.12);
+    --bg-active:    rgba(53, 97, 144, 0.2);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) #mode-tabs.mode-tabs-shell {
+    background: rgba(255, 255, 255, 0.56);
+    border: 1px solid rgba(53, 97, 144, 0.26);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .mode-tab.active {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--t1);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .fmt-pill {
+    background: rgba(255, 255, 255, 0.52);
+    border: 1px solid rgba(53, 97, 144, 0.24);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) #heading-select {
+    background: rgba(255, 255, 255, 0.56);
+    border-color: rgba(53, 97, 144, 0.26);
+    color: var(--t1);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-switcher {
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(53, 97, 144, 0.24);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-seg {
+    color: #4a5f78;
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-seg.theme-seg-active {
+    background: rgba(255, 255, 255, 0.94);
+    color: #15202e;
+    box-shadow: inset 0 0 0 1px rgba(53, 97, 144, 0.22);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .btn-music-pill {
+    --music-pill-bg: rgba(255, 255, 255, 0.48);
+    --music-pill-bd: rgba(53, 97, 144, 0.26);
+    --music-pill-bg-hover: rgba(255, 255, 255, 0.66);
+    --music-pill-bd-hover: rgba(53, 97, 144, 0.34);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .sidebar-action-btn {
+    border-color: rgba(53, 97, 144, 0.26);
+    background: rgba(255, 255, 255, 0.45);
+    color: var(--t2);
+  }
 }
 
 /* 自定义壁纸下侧栏易透出深色风景：主色 + 字重，少用 t3/t4 作正文 */
@@ -235,14 +297,133 @@ input,select,textarea{outline:none}
   color: var(--t1);
 }
 
+/*
+ * 深色壁纸 / 自动识别为暗底：浅色字 + 略加深阅读区衬底，保证输入与侧栏可读
+ * （与默认「浅色壁纸 + 深色字」通过 body.glass-onwall-light-text 切换）
+ */
+.theme-glass.glass-has-bg.glass-onwall-light-text {
+  --t1:           #f1f5f9;
+  --t2:           #cbd5e1;
+  --t3:           #94a3b8;
+  --t4:           #64748b;
+  --bd:           rgba(255, 255, 255, 0.16);
+  --accent:       #93c5fd;
+  --accent-dim:   #7eb3e8;
+  --accent-bg:    rgba(147, 197, 253, 0.14);
+  --bg-hover:     rgba(255, 255, 255, 0.08);
+  --bg-active:    rgba(255, 255, 255, 0.14);
+  --pv-h:         #f1f5f9;
+  --pv-code:      rgba(15, 23, 42, 0.55);
+  --scroll:       rgba(255, 255, 255, 0.22);
+  --bg-bar:       rgba(15, 23, 42, 0.34);
+  --bg-editor:    rgba(15, 23, 42, 0.52);
+  --bg-preview:   rgba(15, 23, 42, 0.48);
+  --bg-panel:     rgba(15, 23, 42, 0.88);
+  --bg-sidebar:   rgba(15, 23, 42, 0.42);
+  --pill-glass:   rgba(30, 41, 59, 0.55);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .mode-tab.active {
+  background: rgba(30, 41, 59, 0.88);
+  color: var(--t1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .theme-seg {
+  color: rgba(226, 232, 240, 0.82);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .theme-seg.theme-seg-active {
+  background: rgba(51, 65, 85, 0.92);
+  color: #f8fafc;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .btn-music-pill {
+  --music-pill-bg: rgba(30, 41, 59, 0.55);
+  --music-pill-bd: rgba(255, 255, 255, 0.14);
+  --music-pill-bg-hover: rgba(51, 65, 85, 0.68);
+  --music-pill-bd-hover: rgba(255, 255, 255, 0.22);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #heading-select {
+  background: rgba(30, 41, 59, 0.62);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--t1);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #find-bar input {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--t1);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .music-source-card {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 深色壁纸 + 浅色字：音乐面板内按钮勿再用「浅底 + 浅字」，并与上一首/下一首图标拉开对比 */
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .noise-btn {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  color: #e2e8f0;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .noise-btn:hover {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #f8fafc;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .mode-btn {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  color: #e2e8f0;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .mode-btn:hover {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #f8fafc;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .music-stop-btn {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--t2);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .music-browse-btn {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #93c5fd;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .music-browse-btn:hover {
+  background: rgba(51, 65, 85, 0.88);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #bfdbfe;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .music-nav-btn {
+  color: rgba(226, 232, 240, 0.82) !important;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .music-nav-btn:hover {
+  color: var(--accent) !important;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel .music-playback-row {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel #volume-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--brand-blue) 0%,
+    var(--brand-blue) var(--vol),
+    rgba(255, 255, 255, 0.14) var(--vol),
+    rgba(255, 255, 255, 0.14) 100%
+  );
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-panel #volume-slider::-moz-range-track {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 /* 毛玻璃 + 系统深色：接近「风景壁纸 + 深灰雾面」的磨砂感（参考用户截图） */
 @media (prefers-color-scheme: dark) {
   .theme-glass {
-    --bg-bar:       rgba(28, 28, 32, 0.14);
-    --bg-editor:    rgba(22, 22, 26, 0.12);
-    --bg-preview:   rgba(24, 24, 28, 0.10);
-    --bg-panel:     rgba(32, 32, 36, 0.26);
-    --bg-sidebar:   rgba(26, 26, 30, 0.12);
+    --bg-bar:       rgba(28, 28, 32, 0.10);
+    --bg-editor:    rgba(22, 22, 26, 0.085);
+    --bg-preview:   rgba(24, 24, 28, 0.075);
+    --bg-panel:     rgba(32, 32, 36, 0.20);
+    --bg-sidebar:   rgba(26, 26, 30, 0.09);
     --bg-hover:     rgba(255, 255, 255, 0.06);
     --bg-active:    rgba(255, 255, 255, 0.10);
     --bd:           rgba(255, 255, 255, 0.08);
@@ -258,11 +439,11 @@ input,select,textarea{outline:none}
     --scroll:       rgba(255, 255, 255, 0.18);
   }
   .theme-glass.glass-has-bg {
-    --bg-bar:       rgba(22, 22, 28, 0.44);
-    --bg-editor:    rgba(18, 18, 24, 0.84);
-    --bg-preview:   rgba(20, 20, 26, 0.82);
-    --bg-panel:     rgba(28, 28, 34, 0.96);
-    --bg-sidebar:   rgba(28, 28, 34, 0.72);
+    --bg-bar:       rgba(22, 22, 28, 0.24);
+    --bg-editor:    rgba(18, 18, 24, 0.52);
+    --bg-preview:   rgba(20, 20, 26, 0.48);
+    --bg-panel:     rgba(28, 28, 34, 0.78);
+    --bg-sidebar:   rgba(28, 28, 34, 0.42);
     --bg-hover:     rgba(255, 255, 255, 0.10);
     --bg-active:    rgba(255, 255, 255, 0.16);
     --bd:           rgba(255, 255, 255, 0.12);
@@ -270,13 +451,13 @@ input,select,textarea{outline:none}
     --t2:           #d4d4dc;
     --t3:           #a8a8b8;
     --t4:           #888896;
-    --pill-glass:   rgba(48, 48, 56, 0.52);
+    --pill-glass:   rgba(48, 48, 56, 0.40);
   }
   .theme-glass.glass-has-bg #bg-layer::after {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, transparent 42%, rgba(0, 0, 0, 0.5) 100%);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, transparent 42%, rgba(0, 0, 0, 0.14) 100%);
   }
   .theme-glass.glass-has-bg #mode-tabs.mode-tabs-shell {
-    background: rgba(40, 40, 48, 0.52);
+    background: rgba(40, 40, 48, 0.38);
     border: 1px solid rgba(255, 255, 255, 0.12);
   }
   .theme-glass.glass-has-bg .mode-tab {
@@ -284,7 +465,7 @@ input,select,textarea{outline:none}
     color: var(--t2);
   }
   .theme-glass.glass-has-bg .mode-tab.active {
-    background: rgba(58, 58, 68, 0.95);
+    background: rgba(58, 58, 68, 0.82);
     color: var(--t1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
@@ -293,7 +474,7 @@ input,select,textarea{outline:none}
     color: var(--t2);
   }
   .theme-glass.glass-has-bg .fmt-pill {
-    background: rgba(40, 40, 48, 0.52);
+    background: rgba(40, 40, 48, 0.38);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .theme-glass.glass-has-bg .fmt-btn {
@@ -301,18 +482,18 @@ input,select,textarea{outline:none}
     color: var(--t2);
   }
   .theme-glass.glass-has-bg #heading-select {
-    background: rgba(36, 36, 44, 0.58);
+    background: rgba(36, 36, 44, 0.44);
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--t1);
   }
   .theme-glass.glass-has-bg .btn-music-pill {
-    --music-pill-bg: rgba(44, 44, 52, 0.52);
+    --music-pill-bg: rgba(44, 44, 52, 0.40);
     --music-pill-bd: rgba(255, 255, 255, 0.12);
-    --music-pill-bg-hover: rgba(56, 56, 64, 0.64);
+    --music-pill-bg-hover: rgba(56, 56, 64, 0.54);
     --music-pill-bd-hover: rgba(255, 255, 255, 0.18);
   }
   .theme-glass.glass-has-bg .theme-switcher {
-    background: rgba(40, 40, 48, 0.52);
+    background: rgba(40, 40, 48, 0.38);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .theme-glass.glass-has-bg .theme-seg {
@@ -320,18 +501,21 @@ input,select,textarea{outline:none}
     font-weight: 600;
   }
   .theme-glass.glass-has-bg .theme-seg.theme-seg-active {
-    background: rgba(70, 70, 80, 0.95);
+    background: rgba(70, 70, 80, 0.82);
     color: #fafafa;
   }
   .theme-glass.glass-has-bg #panel-mask {
     background: rgba(0, 0, 0, 0.5);
   }
   .theme-glass.glass-has-bg #music-panel .music-source-card {
-    background: rgba(48, 48, 56, 0.9);
+    background: rgba(48, 48, 56, 0.76);
     border-color: rgba(255, 255, 255, 0.12);
   }
+  .theme-glass.glass-has-bg #music-panel .music-nav-btn {
+    color: rgba(226, 232, 240, 0.75) !important;
+  }
   .theme-glass.glass-has-bg #find-bar input {
-    background: rgba(36, 36, 44, 0.94);
+    background: rgba(36, 36, 44, 0.80);
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--t1);
   }
@@ -341,6 +525,16 @@ input,select,textarea{outline:none}
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: transparent;
+  }
+  .theme-glass:not(.glass-has-bg) #settings-panel.side-panel {
+    background: rgba(28, 28, 34, 0.94);
+    border-left-color: rgba(255, 255, 255, 0.12);
+    box-shadow: -4px 0 32px rgba(0, 0, 0, 0.45);
+  }
+  .theme-glass:not(.glass-has-bg) #music-panel.side-panel {
+    background: rgba(28, 28, 34, 0.92);
+    border-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -382,15 +576,29 @@ body {
   -webkit-backdrop-filter: none;
   background: transparent;
 }
+/* opacity 用 !important，避免与其它全屏层叠样式竞争导致磨砂层不可见 */
 .theme-glass.glass-has-bg #glass-overlay {
-  opacity: 1;
+  opacity: 1 !important;
   pointer-events: none;
 }
 
-/* 壁纸/磨砂层为 z-index 0/1 时，须把其余主界面抬升，否则会被盖住 */
-body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog) {
+/*
+ * #bg-layer(0) + #glass-overlay(1) 时，主界面必须高于遮罩层。
+ * 仅 .theme-glass 曾抬升；从毛玻璃切到浅色/暗黑后 overlay 上仍有全屏 blur，未抬升的 UI 会被压在下面 → 只见壁纸、按钮不见且点不到。
+ */
+body.theme-light > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog),
+body.theme-dark > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog),
+body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog) {
   position: relative;
   z-index: 2;
+}
+
+/* 浅色/暗黑：禁用全屏磨砂层（由 JS 曾写入的 backdrop-filter 亦需压过，故用 !important） */
+body.theme-light #glass-overlay,
+body.theme-dark #glass-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: transparent !important;
 }
 
 /* 非透明主题：纯色背景遮住透明窗口底部 */
@@ -459,6 +667,18 @@ body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#mu
    · Windows：控件在右侧，顺序 最小化—最大化—关闭（与系统习惯一致）
    · macOS：无边框窗口使用系统原生红绿灯（main.js setWindowButtonVisibility + trafficLightPosition）
    ════════════════════════════════════════════════════════════ */
+/* 标题栏以下须显式 no-drag，否则部分 macOS/Electron 组合下系统拖拽区会吞掉下方点击 */
+#mode-bar,
+#rich-toolbar,
+#md-toolbar,
+#find-bar,
+#main-area,
+#statusbar,
+#sidebar,
+#sidebar-rail {
+  -webkit-app-region: no-drag;
+}
+
 #titlebar {
   height:40px; min-height:40px;
   display:flex; flex-direction:row; align-items:center;
@@ -906,6 +1126,38 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 .wb:nth-child(4){height:8px;animation-delay:.42s}
 @keyframes wa{from{transform:scaleY(.4)}to{transform:scaleY(1.2)}}
 
+/* 状态栏条使用 --bg-bar，暗黑/毛玻璃+壁纸下条底偏深，单独提亮统计文字（浅色主题保持 var(--t3)） */
+.theme-dark #statusbar {
+  color: #b9b9c4;
+}
+.theme-dark #status-mode {
+  color: #a8c4eb;
+}
+.theme-dark #music-status {
+  color: #a8c4eb;
+}
+
+/* 毛玻璃 + 自定义壁纸：条底常显深，深色字模式与浅色字模式均显著提亮 */
+.theme-glass.glass-has-bg #statusbar {
+  color: #d8dee9;
+}
+.theme-glass.glass-has-bg #status-mode {
+  color: #b6d4ff;
+}
+.theme-glass.glass-has-bg #music-status {
+  color: #b6d4ff;
+}
+
+.theme-glass.glass-has-bg.glass-onwall-light-text #statusbar {
+  color: #f8fafc;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #status-mode {
+  color: #e0f0ff;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #music-status {
+  color: #cfe8ff;
+}
+
 /* ════ 面板 ════════════════════════════════════════════════ */
 #panel-mask{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.15)}
 .theme-glass #panel-mask{background:rgba(0,0,0,0.06)}
@@ -923,6 +1175,21 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
   -webkit-backdrop-filter:none!important;
   border-left:1px solid var(--bd);
   box-shadow:-2px 0 24px rgba(0,0,0,0.06);
+}
+/*
+ * 无自定义壁纸时 .theme-glass 的 --bg-panel 故意很透（整块窗口跟系统磨砂），
+ * 设置/音乐侧栏若仍用该变量会透穿到预览/编辑区，文字叠在一起。
+ * 有壁纸时仍用 glass-has-bg 下的 --bg-panel（与原先一致）。
+ */
+.theme-glass:not(.glass-has-bg) #settings-panel.side-panel{
+  background:rgba(255,255,255,0.94);
+  border-left-color:rgba(53,97,144,0.14);
+  box-shadow:-4px 0 28px rgba(0,0,0,0.12);
+}
+.theme-glass:not(.glass-has-bg) #music-panel.side-panel{
+  background:rgba(255,255,255,0.94);
+  border-color:rgba(53,97,144,0.14);
+  box-shadow:0 12px 40px rgba(0,0,0,0.12);
 }
 
 .panel-header{
@@ -1250,11 +1517,11 @@ input[type="range"]::-webkit-slider-thumb{
   flex-shrink:0;
   border:none!important;border-radius:50%!important;
   background:transparent!important;
-  color:rgba(87,96,103,0.32)!important;
+  color:rgba(87,96,103,0.5)!important;
   box-shadow:none!important;
   transition:color .15s,transform .1s;
 }
-.theme-dark #music-panel .music-nav-btn{color:rgba(209,206,199,0.32)!important}
+.theme-dark #music-panel .music-nav-btn{color:rgba(226,232,240,0.72)!important}
 #music-panel .music-nav-btn:hover{color:var(--brand-blue)!important}
 #music-panel .music-nav-btn:active{transform:scale(0.95)}
 #music-panel .music-nav-ico-lg{width:22px;height:22px}

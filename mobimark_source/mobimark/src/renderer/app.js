@@ -34,6 +34,8 @@ let musicTracks=[],musicIdx=0,musicAudio=null,musicNext=null
 let musicPlaying=false,playMode='order',musicVolume=0.6
 let treeExpanded=new Set()
 let treeContextDir=''
+/** 最近一次成功加载的壁纸 data URL，供「自动对比」切换选项时重新估算 */
+let lastBgDataUrl = null
 
 // ── Init ─────────────────────────────────────────────────────
 function detectPlatform () {
@@ -65,6 +67,7 @@ async function init() {
   setupFindBar()
   setupResizer()
   setupPanels()
+  setupPromptDialog()
   setupWorkspaceSidebar()
   setupKeyboard()
   setupMenu()
@@ -139,6 +142,8 @@ function syncUI(c){
   const ov=c.glassOverlay!==undefined?c.glassOverlay:2
   $('overlay-slider').value=ov
   $('overlay-display').textContent=Math.round(ov/60*100)+'%'
+  const gtc = $('glass-text-contrast-select')
+  if (gtc) gtc.value = c.glassTextContrast || 'auto'
   const bgd=$('bg-path-display')
   if(bgd)bgd.textContent=c.bgImagePath?c.bgImagePath:''
   const sw=$('settings-workspace-display')
@@ -147,8 +152,9 @@ function syncUI(c){
 
 // ── Theme ────────────────────────────────────────────────────
 function applyTheme(theme, save=true) {
-  body.className=body.className.replace(/theme-\S+/g,'').trim()
-  body.classList.add('theme-'+theme); cfg.theme=theme
+  ;[...body.classList].filter(c => /^theme-/.test(c)).forEach(c => body.classList.remove(c))
+  body.classList.add('theme-' + theme)
+  cfg.theme = theme
   const hl=$('hljs-light'),hd=$('hljs-dark')
   if(hl&&hd){hl.disabled=theme==='dark';hd.disabled=theme!=='dark'}
   const gs=$('glass-settings')
@@ -164,7 +170,13 @@ function applyTheme(theme, save=true) {
   if (window.mobiAPI.syncMacVibrancy) {
     window.mobiAPI.syncMacVibrancy(theme).catch(() => {})
   }
+  if (theme !== 'glass') {
+    body.classList.remove('glass-onwall-light-text')
+  } else if (body.classList.contains('glass-has-bg')) {
+    syncWallpaperTextContrast(lastBgDataUrl).catch(() => {})
+  }
   refreshGlassEffects()
+  syncGlassContrastSelectAvailability()
   if(save) save_cfg({theme})
 }
 async function setTheme(t){
@@ -177,19 +189,97 @@ function setFont(f){
   body.classList.remove('font-songti','font-kaiti','font-mono','font-sourcehan')
   if(f!=='system')body.classList.add('font-'+f);cfg.fontFamily=f
 }
+function detectWallpaperIsDark (dataUrl) {
+  return new Promise((resolve) => {
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      resolve(false)
+      return
+    }
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const w = 48, h = 48
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(false)
+          return
+        }
+        ctx.drawImage(img, 0, 0, w, h)
+        const { data } = ctx.getImageData(0, 0, w, h)
+        let sum = 0
+        let n = 0
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3]
+          if (a < 12) continue
+          sum += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+          n++
+        }
+        const luma = n ? sum / n : 0.5
+        resolve(luma < 0.44)
+      } catch (_) {
+        resolve(false)
+      }
+    }
+    img.onerror = () => resolve(false)
+    img.src = dataUrl
+  })
+}
+
+function syncGlassContrastSelectAvailability () {
+  const gtc = $('glass-text-contrast-select')
+  if (!gtc) return
+  const glass = body.classList.contains('theme-glass')
+  const hasBg = body.classList.contains('glass-has-bg')
+  const hint = '自动会按背景图明暗切换文字颜色；也可手动指定'
+  if (!glass) {
+    gtc.disabled = false
+    gtc.title = hint
+    return
+  }
+  gtc.disabled = !hasBg
+  gtc.title = hasBg ? hint : '无背景图时此项无效；请先选择背景图'
+}
+
+async function syncWallpaperTextContrast (dataUrlForAuto) {
+  body.classList.remove('glass-onwall-light-text')
+  if (!body.classList.contains('theme-glass') || !body.classList.contains('glass-has-bg')) return
+  const mode = cfg.glassTextContrast || 'auto'
+  if (mode === 'light_on_wp') {
+    body.classList.add('glass-onwall-light-text')
+    return
+  }
+  if (mode === 'dark_on_wp') return
+  const url = dataUrlForAuto || lastBgDataUrl
+  if (!url) return
+  const isDark = await detectWallpaperIsDark(url)
+  if (isDark) body.classList.add('glass-onwall-light-text')
+}
+
 async function applyBgImage(p){
   const layer=$('bg-layer')
   if(!p){
     if(layer)layer.style.backgroundImage=''
     body.classList.remove('glass-has-bg')
+    lastBgDataUrl = null
+    body.classList.remove('glass-onwall-light-text')
     refreshGlassEffects()
+    syncGlassContrastSelectAvailability()
     return
   }
-  if(!layer)return
+  if(!layer){
+    syncGlassContrastSelectAvailability()
+    return
+  }
   if(typeof window.mobiAPI.loadBgImageDataUrl!=='function'){
     console.warn('[bg] loadBgImageDataUrl 不可用')
     body.classList.remove('glass-has-bg')
+    lastBgDataUrl = null
+    body.classList.remove('glass-onwall-light-text')
     refreshGlassEffects()
+    syncGlassContrastSelectAvailability()
     return
   }
   const r=await window.mobiAPI.loadBgImageDataUrl(p)
@@ -200,12 +290,17 @@ async function applyBgImage(p){
     layer.style.backgroundPosition='center'
     layer.style.backgroundRepeat='no-repeat'
     body.classList.add('glass-has-bg')
+    lastBgDataUrl = r.dataUrl
+    await syncWallpaperTextContrast(r.dataUrl)
   }else{
     layer.style.backgroundImage=''
     body.classList.remove('glass-has-bg')
+    lastBgDataUrl = null
+    body.classList.remove('glass-onwall-light-text')
     if(r&&r.error)console.warn('[bg]',p,r.error)
   }
   refreshGlassEffects()
+  syncGlassContrastSelectAvailability()
 }
 
 /** 毛玻璃 + 自定义背景：全屏遮罩可模糊壁纸；无背景图时关闭（避免 blur 糊到 WebView 白底） */
@@ -218,38 +313,35 @@ function applyGlassBlur(v){
   const go = $('glass-overlay')
   if (!go) return
   const px = Math.min(Math.max(Number(v) || 0, 4), 48)
-  if (body.classList.contains('theme-glass')) {
-    if (!body.classList.contains('glass-has-bg')) {
-      go.style.backdropFilter = 'none'
-      go.style.webkitBackdropFilter = 'none'
-      return
-    }
-    go.style.backdropFilter = `blur(${px}px) saturate(1.06)`
-    go.style.webkitBackdropFilter = `blur(${px}px) saturate(1.06)`
+  const glassBg = body.classList.contains('theme-glass') && body.classList.contains('glass-has-bg')
+  if (glassBg) {
+    /* 须压过 stylesheet 里浅色/暗黑主题的 backdrop-filter:none !important（切主题后内联非 important 会不生效） */
+    const val = `blur(${px}px) saturate(1.06)`
+    go.style.setProperty('backdrop-filter', val, 'important')
+    go.style.setProperty('-webkit-backdrop-filter', val, 'important')
     return
   }
-  go.style.backdropFilter = `blur(${px}px) brightness(1.06) saturate(1.15)`
-  go.style.webkitBackdropFilter = `blur(${px}px) brightness(1.06) saturate(1.15)`
+  go.style.removeProperty('backdrop-filter')
+  go.style.removeProperty('-webkit-backdrop-filter')
 }
 
 function applyGlassOverlay(v){
   const go = $('glass-overlay')
   if (!go) return
-  if (body.classList.contains('theme-glass')) {
-    if (!body.classList.contains('glass-has-bg')) {
-      go.style.background = 'transparent'
-      return
-    }
+  const glassBg = body.classList.contains('theme-glass') && body.classList.contains('glass-has-bg')
+  if (glassBg) {
     const raw = Math.min(60, Math.max(0, Number(v) || 0))
     const t = raw / 60
-    const alpha = t * 0.52
+    /* 有壁纸时遮罩宜淡：深色系统下黑雾极易把整张图压暗，系数单独压低 */
+    const alpha = t * 0.30
     const dark = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches
-    go.style.background = dark
-      ? `rgba(0, 0, 0, ${alpha * 0.92})`
-      : `rgba(255, 255, 255, ${alpha * 0.88})`
+    const bg = dark
+      ? `rgba(0, 0, 0, ${alpha * 0.48})`
+      : `rgba(255, 255, 255, ${alpha * 0.58})`
+    go.style.setProperty('background', bg, 'important')
     return
   }
-  go.style.background = `rgba(255,255,255,${Math.min(0.09, Math.max(0, v) / 900)})`
+  go.style.removeProperty('background')
 }
 
 // ════ 编辑模式 ══════════════════════════════════════════════
@@ -798,6 +890,7 @@ function setupKeyboard(){
       if(findBar.style.display!=='none'){hideFindBar();return}
       if($('table-dialog').style.display!=='none'){$('table-dialog').style.display='none';return}
       if($('link-dialog').style.display!=='none'){$('link-dialog').style.display='none';return}
+      if($('prompt-dialog').style.display!=='none'){$('prompt-dialog-cancel').click();return}
       closeAllPanels()
     }
     if(e.key==='F11'){e.preventDefault();toggleFocus()}
@@ -853,6 +946,38 @@ async function loadRecentFiles(){
 }
 
 // ════ 工作区侧栏 ════════════════════════════════════════════
+/** Electron 渲染进程里 window.prompt 常无效，用与表格/链接一致的内嵌框 */
+let promptDialogResolve=null
+function setupPromptDialog(){
+  const dlg=$('prompt-dialog')
+  const inp=$('prompt-dialog-input')
+  const finish=v=>{
+    dlg.style.display='none'
+    const cb=promptDialogResolve
+    promptDialogResolve=null
+    if(cb)cb(v)
+  }
+  $('prompt-dialog-cancel').onclick=()=>finish(null)
+  $('prompt-dialog-ok').onclick=()=>finish(inp.value)
+  dlg.onclick=e=>{if(e.target===dlg)finish(null)}
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();finish(inp.value)}
+  })
+}
+function openPromptDialog({title,label,defaultValue,placeholder}){
+  return new Promise(resolve=>{
+    promptDialogResolve=resolve
+    const dlg=$('prompt-dialog')
+    const inp=$('prompt-dialog-input')
+    $('prompt-dialog-title').textContent=title
+    $('prompt-dialog-label').textContent=label||'名称'
+    inp.value=defaultValue!=null?String(defaultValue):''
+    inp.placeholder=placeholder||''
+    dlg.style.display='flex'
+    requestAnimationFrame(()=>{inp.focus();inp.select()})
+  })
+}
+
 async function syncWorkspaceHint(){
   const w=await window.mobiAPI.workspaceGetRoot()
   const hint=$('workspace-path-hint')
@@ -977,7 +1102,12 @@ function setupWorkspaceSidebar(){
   }
   $('btn-workspace-refresh').onclick=()=>{void refreshWorkspaceTree()}
   $('btn-tree-new-file').onclick=async()=>{
-    const name=prompt('新笔记名称（可省略 .md）','未命名.md')
+    const name=await openPromptDialog({
+      title:'新笔记',
+      label:'名称',
+      defaultValue:'未命名.md',
+      placeholder:'可省略 .md，将自动补全'
+    })
     if(name==null||!String(name).trim())return
     const r=await window.mobiAPI.workspaceCreateFile(treeContextDir,String(name).trim())
     if(r.error){
@@ -989,7 +1119,11 @@ function setupWorkspaceSidebar(){
     await openWorkspaceRelFile(r.relPath)
   }
   $('btn-tree-new-folder').onclick=async()=>{
-    const name=prompt('新文件夹名称','新建文件夹')
+    const name=await openPromptDialog({
+      title:'新文件夹',
+      label:'名称',
+      defaultValue:'新建文件夹'
+    })
     if(name==null||!String(name).trim())return
     const r=await window.mobiAPI.workspaceMkdir(treeContextDir,String(name).trim())
     if(r.error){
@@ -1075,6 +1209,14 @@ function setupSettingsPanel(){
     $('overlay-display').textContent=Math.round(v/60*100)+'%'
     applyGlassOverlay(v)
     save_cfg({glassOverlay:v})
+  }
+  const gtc = $('glass-text-contrast-select')
+  if (gtc) {
+    gtc.onchange = async function () {
+      cfg.glassTextContrast = this.value
+      await save_cfg({ glassTextContrast: this.value })
+      await syncWallpaperTextContrast(lastBgDataUrl)
+    }
   }
 }
 function save_cfg(p){

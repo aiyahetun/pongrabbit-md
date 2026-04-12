@@ -225,6 +225,18 @@
   </div>
 </div>
 
+<!-- 工作区新建（Electron 下 window.prompt 常不可用，改用内嵌对话框） -->
+<div id="prompt-dialog" class="dialog" style="display:none">
+  <div class="dialog-box">
+    <div class="dialog-title" id="prompt-dialog-title"></div>
+    <div class="dialog-row"><label id="prompt-dialog-label">名称</label><input type="text" id="prompt-dialog-input" autocomplete="off"></div>
+    <div class="dialog-btns">
+      <button type="button" id="prompt-dialog-cancel">取消</button>
+      <button type="button" id="prompt-dialog-ok" class="primary-btn">确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- 音乐面板 — 参考 彭兔子MD/音效与音乐按钮效果 -->
 <div id="music-panel" class="side-panel" style="display:none">
   <div class="panel-header music-panel-header">
@@ -330,6 +342,12 @@
     <input type="range" id="blur-slider" min="4" max="48" value="28" step="1" title="仅在选择背景图后对壁纸模糊生效">
     <div class="panel-label" style="margin-top:12px">遮罩强度（有背景图时） <span id="overlay-display">3%</span></div>
     <input type="range" id="overlay-slider" min="0" max="60" value="2" step="1" title="仅在选择背景图后叠在壁纸上，数值越大越朦胧">
+    <div class="panel-label" style="margin-top:12px">壁纸与文字对比</div>
+    <select id="glass-text-contrast-select" title="自动会按背景图明暗切换文字颜色；也可手动指定">
+      <option value="auto">自动（按背景图）</option>
+      <option value="dark_on_wp">浅色毛玻璃</option>
+      <option value="light_on_wp">深色毛玻璃</option>
+    </select>
   </div>
 </div>
 

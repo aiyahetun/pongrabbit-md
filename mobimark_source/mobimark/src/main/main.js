@@ -1,13 +1,6 @@
 'use strict'
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
-/* 打包版 Mac：透明窗口 + vibrancy 在部分机型上会导致整页 WebView 白屏；关闭 GPU 合成并避免透明窗口 */
-if (process.platform === 'darwin' && app.isPackaged) {
-  try {
-    app.disableHardwareAcceleration()
-    app.commandLine.appendSwitch('disable-features', 'MacWebContentsOcclusion')
-  } catch (_) {}
-}
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -38,6 +31,8 @@ function defaultConfig () {
     bgImagePath: '',
     glassBlur: 28,
     glassOverlay: 2,
+    /** 有自定义壁纸时：auto 根据图估算 | dark_on_wp 浅色毛玻璃（深色字）| light_on_wp 深色毛玻璃（浅色字） */
+    glassTextContrast: 'auto',
     musicFolder: '',
     musicVolume: 0.6,
     workspaceRoot: '',
@@ -209,33 +204,21 @@ function setMacDockIcon () {
   }
 }
 
-function isMacPackaged () {
-  return process.platform === 'darwin' && app.isPackaged
-}
-
-/** 毛玻璃：开发版用透明窗口透桌面；打包版 Mac 用不透明白底，避免白屏 */
+/** 毛玻璃：透明底以便 WebView 与系统磨砂；非毛玻璃用白底 */
 function syncGlassWindowBackground (theme) {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try {
-    if (isMacPackaged()) {
-      mainWindow.setBackgroundColor('#FFFFFFFF')
-      return
-    }
     mainWindow.setBackgroundColor(theme === 'glass' ? '#00000000' : '#FFFFFFFF')
   } catch (e) {
     console.warn('[window background]', e.message)
   }
 }
 
-/** macOS 毛玻璃：开发版可用 under-window；打包版一律关闭 vibrancy（与不透窗口配合，否则易白屏） */
+/** macOS 毛玻璃：无自定义壁纸时用 under-window，与开发/打包一致 */
 function syncMacVibrancy (theme) {
   syncGlassWindowBackground(theme)
   if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed()) return
   try {
-    if (isMacPackaged()) {
-      mainWindow.setVibrancy(null)
-      return
-    }
     const useUnderWindow = theme === 'glass' && !hasGlassCustomBg()
     if (useUnderWindow) {
       mainWindow.setVibrancy('under-window')
@@ -251,15 +234,15 @@ function createWindow () {
   const { width, height } = config.windowBounds || { width: 1100, height: 720 }
   const glassTheme = (config.theme || 'light') === 'glass'
   const winAcrylic = glassTheme && !hasGlassCustomBg()
-  const macPkg = isMacPackaged()
   const winOpts = {
     width,
     height,
     minWidth: 800,
     minHeight: 550,
     frame: false,
-    transparent: !macPkg,
-    backgroundColor: macPkg ? '#FFFFFFFF' : '#00000000',
+    /* 与 npm start 一致：Mac/Win 均用透明窗口，由 syncGlassWindowBackground 按主题再设底色 */
+    transparent: true,
+    backgroundColor: '#00000000',
     backgroundMaterial: process.platform === 'win32' && winAcrylic ? 'acrylic' : 'none',
     icon: windowIconPath(),
     show: false,
