@@ -408,7 +408,9 @@ function setMode(mode) {
 function setupRichEditor(){
   richEditor.addEventListener('input',()=>{_lastSrc='wysiwyg';setModified(true);scheduleRender();updateStatus()})
   richEditor.addEventListener('keydown',e=>{
-    if(e.ctrlKey){
+    const acc=e.metaKey||e.ctrlKey
+    if(acc&&e.key.toLowerCase()==='a'){e.preventDefault();document.execCommand('selectAll');return}
+    if(acc){
       switch(e.key.toLowerCase()){
         case 'b':e.preventDefault();document.execCommand('bold');return
         case 'i':e.preventDefault();document.execCommand('italic');return
@@ -481,7 +483,9 @@ function setupMdToolbar(){
   mdEditor.addEventListener('input',()=>{_lastSrc='md';setModified(true);scheduleRender();updateStatus()})
   mdEditor.addEventListener('keydown',e=>{
     if(e.key==='Tab'){e.preventDefault();insertMd('  ');return}
-    if(e.ctrlKey){
+    const acc=e.metaKey||e.ctrlKey
+    if(acc&&e.key.toLowerCase()==='a'){e.preventDefault();mdEditor.select();return}
+    if(acc){
       switch(e.key.toLowerCase()){
         case 'b':e.preventDefault();wrapMd('**','**');return
         case 'i':e.preventDefault();wrapMd('*','*');return
@@ -534,6 +538,8 @@ function setupTopActions(){
   $('btn-save').onclick=saveFile
   $('btn-export-pdf').onclick=exportPdf
   $('btn-export-html').onclick=exportHtml
+  $('btn-export-xhs-short').onclick=()=>{void exportXhsShort()}
+  $('btn-export-xhs-long').onclick=()=>{void exportXhsLong()}
   $('btn-music').onclick=()=>togglePanel('music-panel')
   $('btn-settings').onclick=()=>togglePanel('settings-panel')
   $('btn-theme-light').onclick=()=>setTheme('light')
@@ -885,7 +891,8 @@ function setupResizer(){
 // ════ 键盘 ══════════════════════════════════════════════════
 function setupKeyboard(){
   document.addEventListener('keydown',e=>{
-    if(e.ctrlKey&&e.shiftKey&&e.key==='S'){e.preventDefault();saveFileAs();return}
+    const acc=e.metaKey||e.ctrlKey
+    if(acc&&e.shiftKey&&e.key.toLowerCase()==='s'){e.preventDefault();saveFileAs();return}
     if(e.key==='Escape'){
       if(findBar.style.display!=='none'){hideFindBar();return}
       if($('table-dialog').style.display!=='none'){$('table-dialog').style.display='none';return}
@@ -918,6 +925,8 @@ function setupMenu(){
   window.mobiAPI.onMenu((ev,...args)=>{
     const map={'menu-new':newFile,'menu-open':openFile,'menu-save':saveFile,
       'menu-save-as':saveFileAs,'menu-export-html':exportHtml,
+      'menu-export-xhs-short':()=>{void exportXhsShort()},
+      'menu-export-xhs-long':()=>{void exportXhsLong()},
       'menu-find':showFindBar,'menu-theme':()=>setTheme(args[0])}
     if(map[ev])map[ev]()
   })
@@ -976,6 +985,194 @@ function openPromptDialog({title,label,defaultValue,placeholder}){
     dlg.style.display='flex'
     requestAnimationFrame(()=>{inp.focus();inp.select()})
   })
+}
+
+// ════ 小红书 3:4 图片导出（1080×1440，基于预览渲染 + html2canvas）══════════
+const XHS_PAGE_W = 1080
+const XHS_PAGE_H = 1440
+const XHS_MAX_CANVAS_H = 32000
+
+async function getXhsExportTitle () {
+  let t = ''
+  if (currentFile) t = bn(currentFile).replace(/\.md$/i, '')
+  else {
+    const raw = ($('file-name').textContent || '').trim()
+    if (raw && raw !== '无题文档') t = raw.replace(/\.md$/i, '')
+  }
+  if (!t || t === '无题' || t === '无题文档') {
+    const v = await openPromptDialog({
+      title: '导出图片',
+      label: '文档标题',
+      defaultValue: '未命名笔记',
+      placeholder: '用作文件名与短图文件夹名'
+    })
+    if (v == null) return null
+    t = String(v).trim() || '未命名笔记'
+  }
+  return t.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || '未命名笔记'
+}
+
+function canvasToPngDataUrl (canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(b => {
+      if (!b) { reject(new Error('toBlob 失败')); return }
+      const fr = new FileReader()
+      fr.onload = () => resolve(fr.result)
+      fr.onerror = reject
+      fr.readAsDataURL(b)
+    }, 'image/png', 0.95)
+  })
+}
+
+function normalizeCanvasToWidth1080 (src) {
+  const tw = XHS_PAGE_W
+  const th = Math.max(1, Math.round(src.height * (tw / src.width)))
+  const c = document.createElement('canvas')
+  c.width = tw
+  c.height = th
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, tw, th)
+  ctx.imageSmoothingEnabled = true
+  ctx.drawImage(src, 0, 0, tw, th)
+  return c
+}
+
+function sliceCanvasToFixedPages (normalizedCanvas) {
+  const W = XHS_PAGE_W
+  const H = XHS_PAGE_H
+  const totalH = normalizedCanvas.height
+  const pages = []
+  const n = Math.max(1, Math.ceil(totalH / H))
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, W, H)
+    const sy = i * H
+    const sh = Math.min(H, Math.max(0, totalH - sy))
+    if (sh > 0) ctx.drawImage(normalizedCanvas, 0, sy, W, sh, 0, 0, W, sh)
+    pages.push(c)
+  }
+  return pages
+}
+
+function clearXhsExportHost () {
+  const h = $('xhs-export-host')
+  if (h) h.innerHTML = ''
+}
+
+async function buildXhsExportSurface () {
+  await renderPreview()
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载，请检查 node_modules 与 index.html 脚本引用')
+  let host = $('xhs-export-host')
+  if (!host) {
+    host = document.createElement('div')
+    host.id = 'xhs-export-host'
+    document.body.appendChild(host)
+  }
+  host.innerHTML = ''
+  const surface = document.createElement('div')
+  surface.className = 'xhs-export-surface'
+  surface.innerHTML = previewEl.innerHTML
+  host.appendChild(surface)
+  for (const img of surface.querySelectorAll('img')) {
+    const s = img.getAttribute('src')
+    if (!s || s.startsWith('data:')) continue
+    try {
+      let href = s
+      if (!/^https?:\/\//i.test(s)) {
+        const r = await window.mobiAPI.resolveMarkdownImage(currentFile || '', s)
+        if (r) href = r
+      }
+      img.setAttribute('src', href)
+      const blob = await fetch(href).then(r => r.blob())
+      const dataUrl = await new Promise((res, rej) => {
+        const fr = new FileReader()
+        fr.onload = () => res(fr.result)
+        fr.onerror = rej
+        fr.readAsDataURL(blob)
+      })
+      img.setAttribute('src', dataUrl)
+    } catch (e) {
+      console.warn('[xhs-export] img inline', e)
+    }
+  }
+  await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
+  await new Promise(r => setTimeout(r, 120))
+  return surface
+}
+
+async function exportXhsShort () {
+  let title
+  try {
+    title = await getXhsExportTitle()
+    if (title == null) return
+    const pick = await window.mobiAPI.xhsExportPickDir()
+    if (!pick || pick.cancelled || !pick.path) return
+    const surface = await buildXhsExportSurface()
+    const raw = await window.html2canvas(surface, {
+      backgroundColor: '#ffffff',
+      scale: 1,
+      useCORS: true,
+      allowTaint: true,
+      logging: false
+    })
+    clearXhsExportHost()
+    const norm = normalizeCanvasToWidth1080(raw)
+    if (norm.height > XHS_MAX_CANVAS_H) {
+      alert('文档过长，请精简内容或改用长图导出（仍可能受系统限制）。')
+      return
+    }
+    const pages = sliceCanvasToFixedPages(norm)
+    const files = []
+    for (let i = 0; i < pages.length; i++) {
+      const data = await canvasToPngDataUrl(pages[i])
+      files.push({ name: `${String(i + 1).padStart(2, '0')}.png`, data })
+    }
+    const r = await window.mobiAPI.xhsExportWriteMany({ parentPath: pick.path, folderName: title, files })
+    if (r && r.error) { alert(r.error); return }
+    alert(`已导出 ${pages.length} 张图片（每张 ${XHS_PAGE_W}×${XHS_PAGE_H}）：\n${r.dir}`)
+  } catch (e) {
+    clearXhsExportHost()
+    console.error(e)
+    alert('导出短图失败：' + (e.message || String(e)))
+  }
+}
+
+async function exportXhsLong () {
+  let title
+  try {
+    title = await getXhsExportTitle()
+    if (title == null) return
+    const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
+    if (!p || p.cancelled || !p.filePath) return
+    const surface = await buildXhsExportSurface()
+    const raw = await window.html2canvas(surface, {
+      backgroundColor: '#ffffff',
+      scale: 1,
+      useCORS: true,
+      allowTaint: true,
+      logging: false
+    })
+    clearXhsExportHost()
+    const norm = normalizeCanvasToWidth1080(raw)
+    if (norm.height > XHS_MAX_CANVAS_H) {
+      alert('文档过长，超出单张图片安全高度，请分段导出短图。')
+      return
+    }
+    const data = await canvasToPngDataUrl(norm)
+    const w = await window.mobiAPI.xhsExportWriteOne({ filePath: p.filePath, data })
+    if (w && w.error) { alert(w.error); return }
+    alert('长图已保存（宽 ' + XHS_PAGE_W + 'px）：\n' + p.filePath)
+  } catch (e) {
+    clearXhsExportHost()
+    console.error(e)
+    alert('导出长图失败：' + (e.message || String(e)))
+  }
 }
 
 async function syncWorkspaceHint(){

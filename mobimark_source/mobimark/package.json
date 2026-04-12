@@ -21,11 +21,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",
@@ -47,7 +51,10 @@
     },
     "mac": {
       "artifactName": "pongrabbit-MD-${version}.${ext}",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
       "identity": null,
@@ -65,7 +72,11 @@
               "net.daringfireball.markdown",
               "public.plain-text"
             ],
-            "CFBundleTypeExtensions": ["md", "markdown", "txt"]
+            "CFBundleTypeExtensions": [
+              "md",
+              "markdown",
+              "txt"
+            ]
           }
         ]
       }
@@ -81,8 +92,13 @@
     "portable": {
       "artifactName": "pongrabbit-MD ${version}.${ext}"
     },
-    "asarUnpack": ["src/main/preload.js"],
-    "files": ["src/**/*", "node_modules/**/*"],
+    "asarUnpack": [
+      "src/main/preload.js"
+    ],
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
     "extraResources": [
       {
         "from": "sounds/",
@@ -90,7 +106,10 @@
       }
     ]
   },
-  "keywords": ["markdown", "editor"],
+  "keywords": [
+    "markdown",
+    "editor"
+  ],
   "author": "pongrabbit",
   "license": "MIT",
   "devDependencies": {
@@ -99,6 +118,7 @@
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
+    "html2canvas": "^1.4.1",
     "marked": "^11.2.0"
   }
 }

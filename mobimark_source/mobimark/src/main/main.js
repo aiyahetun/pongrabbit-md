@@ -333,6 +333,8 @@ function buildMenu () {
         { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu-save-as') },
         { type: 'separator' },
         { label: '导出 HTML…', click: () => send('menu-export-html') },
+        { label: '导出短图（小红书 3:4）…', click: () => send('menu-export-xhs-short') },
+        { label: '导出长图（小红书 3:4）…', click: () => send('menu-export-xhs-long') },
         ...(!isMac ? [{ type: 'separator' }, { role: 'quit' }] : [])
       ]
     },
@@ -345,6 +347,8 @@ function buildMenu () {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
+        { type: 'separator' },
+        { role: 'selectAll' },
         { type: 'separator' },
         { label: '查找…', accelerator: 'CmdOrCtrl+F', click: () => send('menu-find') }
       ]
@@ -550,6 +554,54 @@ ipcMain.handle('export-pdf', async (_, { html, title }) => {
     return { error: String(e.message) }
   } finally {
     pdfWin.close()
+  }
+})
+
+ipcMain.handle('xhs-export-pick-dir', async () => {
+  if (!mainWindow) return { cancelled: true }
+  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+    title: '选择保存位置（将在此创建以文档标题命名的文件夹并放入短图）',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (canceled || !filePaths || !filePaths[0]) return { cancelled: true }
+  return { path: filePaths[0] }
+})
+
+ipcMain.handle('xhs-export-save-long-path', async (_, { defaultTitle }) => {
+  if (!mainWindow) return { cancelled: true }
+  const safeTitle = (defaultTitle || 'export').replace(/[\\/:*?"<>|]/g, '_')
+  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+    title: '导出长图 PNG',
+    defaultPath: `${safeTitle}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }]
+  })
+  if (canceled || !filePath) return { cancelled: true }
+  return { filePath }
+})
+
+ipcMain.handle('xhs-export-write-one', async (_, { filePath, data }) => {
+  try {
+    const raw = typeof data === 'string' && data.includes(',') ? data.split(',').pop() : data
+    fs.writeFileSync(filePath, Buffer.from(raw, 'base64'))
+    return { ok: true }
+  } catch (e) {
+    return { error: String(e.message) }
+  }
+})
+
+ipcMain.handle('xhs-export-write-many', async (_, { parentPath, folderName, files }) => {
+  try {
+    const safe = (folderName || 'export').replace(/[\\/:*?"<>|]/g, '_').trim() || 'export'
+    const dir = path.join(parentPath, safe)
+    fs.mkdirSync(dir, { recursive: true })
+    for (const { name, data } of files) {
+      const raw = typeof data === 'string' && data.includes(',') ? data.split(',').pop() : data
+      const fn = String(name || 'page.png').replace(/[\\/]/g, '_')
+      fs.writeFileSync(path.join(dir, fn), Buffer.from(raw, 'base64'))
+    }
+    return { ok: true, dir }
+  } catch (e) {
+    return { error: String(e.message) }
   }
 })
 

@@ -1078,6 +1078,45 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 #preview-content input[type="checkbox"]{margin-right:6px;accent-color:var(--accent)}
 .hljs{background:transparent!important}
 
+/* 小红书 3:4 导出：离屏渲染，样式与预览一致（固定浅色底便于出图） */
+#xhs-export-host{
+  position:fixed;left:-24000px;top:0;width:1080px;z-index:-9999;
+  pointer-events:none;overflow:visible;
+}
+#xhs-export-host .xhs-export-surface{
+  width:1080px;box-sizing:border-box;padding:48px 56px;background:#fff;
+  color:#1e293b;font-size:17px;line-height:1.8;
+  font-family:var(--font-preview),var(--font-ui),sans-serif;
+}
+#xhs-export-host .xhs-export-surface h1,#xhs-export-host .xhs-export-surface h2,
+#xhs-export-host .xhs-export-surface h3,#xhs-export-host .xhs-export-surface h4{
+  color:#0f172a;font-weight:700;line-height:1.35;margin:1.5em 0 .45em;
+}
+#xhs-export-host .xhs-export-surface h1{font-size:1.75em;margin-top:.35em}
+#xhs-export-host .xhs-export-surface h2{font-size:1.4em;color:#275584}
+#xhs-export-host .xhs-export-surface h3{font-size:1.15em}
+#xhs-export-host .xhs-export-surface h4{font-size:1em}
+#xhs-export-host .xhs-export-surface p{margin:.65em 0}
+#xhs-export-host .xhs-export-surface a{color:#356190;text-decoration:none;border-bottom:1px solid rgba(53,97,144,.28)}
+#xhs-export-host .xhs-export-surface strong{font-weight:700;color:#0f172a}
+#xhs-export-host .xhs-export-surface em{font-style:italic}
+#xhs-export-host .xhs-export-surface code{font-family:var(--font-code);font-size:.875em;background:#eef3fa;padding:2px 6px;border-radius:4px}
+#xhs-export-host .xhs-export-surface pre{background:#eef3fa;border-radius:12px;padding:18px 22px;overflow-x:auto;margin:1em 0}
+#xhs-export-host .xhs-export-surface pre code{background:none;padding:0}
+#xhs-export-host .xhs-export-surface blockquote{
+  border-left:4px solid #356190;margin:1em 0;padding:6px 0 6px 16px;color:#475569;font-style:italic;
+  background:rgba(53,97,144,.08);border-radius:0 6px 6px 0;
+}
+#xhs-export-host .xhs-export-surface hr{border:none;border-top:1px solid #cbd5e1;margin:1.6em 0}
+#xhs-export-host .xhs-export-surface img{max-width:100%;height:auto;border-radius:10px;display:block;margin:1em auto}
+#xhs-export-host .xhs-export-surface table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.93em}
+#xhs-export-host .xhs-export-surface th,#xhs-export-host .xhs-export-surface td{border:1px solid #cbd5e1;padding:8px 14px;text-align:left}
+#xhs-export-host .xhs-export-surface th{background:rgba(53,97,144,.1);font-weight:600;color:#0f172a}
+#xhs-export-host .xhs-export-surface tr:nth-child(even) td{background:rgba(53,97,144,.06)}
+#xhs-export-host .xhs-export-surface ul,#xhs-export-host .xhs-export-surface ol{margin:.5em 0 .5em 2em}
+#xhs-export-host .xhs-export-surface li{margin:.28em 0}
+#xhs-export-host .xhs-export-surface input[type="checkbox"]{margin-right:6px;accent-color:#356190}
+
 /* ════ 富文本内容 ════════════════════════════════════════════ */
 #rich-editor h1{font-size:1.75em;font-weight:900;color:var(--pv-h);margin:1em 0 .4em}
 #rich-editor h2{font-size:1.4em;font-weight:700;color:var(--accent-dim);margin:.9em 0 .35em}

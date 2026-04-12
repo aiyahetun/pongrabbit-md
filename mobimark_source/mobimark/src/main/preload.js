@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   newFile: (a) => ipcRenderer.invoke('new-file', a),
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
   exportHtml: (a) => ipcRenderer.invoke('export-html', a),
+  xhsExportPickDir: () => ipcRenderer.invoke('xhs-export-pick-dir'),
+  xhsExportSaveLongPath: (a) => ipcRenderer.invoke('xhs-export-save-long-path', a),
+  xhsExportWriteOne: (a) => ipcRenderer.invoke('xhs-export-write-one', a),
+  xhsExportWriteMany: (a) => ipcRenderer.invoke('xhs-export-write-many', a),
   showInFolder: (p) => ipcRenderer.send('show-in-folder', p),
   pickBgImage: () => ipcRenderer.invoke('pick-bg-image'),
   loadBgImageDataUrl: (fp) => ipcRenderer.invoke('load-bg-image-data-url', fp),
@@ -52,6 +56,7 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   },
   onMenu: (cb) => {
     ['menu-new', 'menu-open', 'menu-save', 'menu-save-as', 'menu-export-html',
+      'menu-export-xhs-short', 'menu-export-xhs-long',
       'menu-find', 'menu-toggle-preview', 'menu-focus-mode', 'menu-theme']
       .forEach(e => ipcRenderer.on(e, (_, ...args) => cb(e, ...args)))
   }

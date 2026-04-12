@@ -43,6 +43,8 @@
     <div class="tool-sep"></div>
     <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
     <button type="button" class="action-btn" id="btn-export-html">导出 HTML</button>
+    <button type="button" class="action-btn" id="btn-export-xhs-short" title="按 1080×1440 分页导出多张 PNG，在选定目录下创建以标题命名的文件夹">短图 3:4</button>
+    <button type="button" class="action-btn" id="btn-export-xhs-long" title="整篇导出为一张 1080 宽纵向长图，文件名默认与文档标题一致">长图 3:4</button>
     <div class="tool-sep"></div>
     <button type="button" class="action-btn btn-music-pill" id="btn-music" title="音效与音乐">
       <svg class="btn-music-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
@@ -353,6 +355,7 @@
 
 <div id="panel-mask" style="display:none"></div>
 
+<script src="../../node_modules/html2canvas/dist/html2canvas.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
