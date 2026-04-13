@@ -519,6 +519,94 @@ input,select,textarea{outline:none}
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--t1);
   }
+
+  /*
+   * 系统深色 + 毛玻璃 + 浅色壁纸（未加 .glass-onwall-light-text）：
+   * 上方仍按 dark 媒体使用浅灰字，但壁纸透出呈亮底 → 标题、工具栏与窗口按钮对比崩溃。
+   * 与 @media not (prefers-color-scheme: dark) 下 :not(.glass-onwall-light-text) 同理，改回深色字 + 较实顶栏。
+   */
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) {
+    --bg-bar: rgba(252, 253, 255, 0.46);
+    --bg-sidebar: rgba(252, 253, 255, 0.62);
+    --bd: rgba(53, 97, 144, 0.26);
+    --t1: #141c26;
+    --t2: #334155;
+    --t3: #475569;
+    --t4: #64748b;
+    --bg-hover: rgba(53, 97, 144, 0.12);
+    --bg-active: rgba(53, 97, 144, 0.2);
+    --accent: #356190;
+    --accent-dim: #275584;
+    --accent-bg: rgba(53, 97, 144, 0.1);
+    --pill-glass: rgba(255, 255, 255, 0.52);
+    --pv-h: #1e2c38;
+    --scroll: rgba(53, 97, 144, 0.28);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) #mode-tabs.mode-tabs-shell {
+    background: rgba(255, 255, 255, 0.56);
+    border: 1px solid rgba(53, 97, 144, 0.24);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .mode-tab {
+    color: var(--t2);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .mode-tab:hover {
+    background: rgba(53, 97, 144, 0.08);
+    color: var(--t1);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .mode-tab.active {
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--t1);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .action-btn {
+    color: var(--t2);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .fmt-pill {
+    background: rgba(255, 255, 255, 0.52);
+    border: 1px solid rgba(53, 97, 144, 0.22);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .fmt-btn {
+    color: var(--t2);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) #heading-select {
+    background: rgba(255, 255, 255, 0.56);
+    border-color: rgba(53, 97, 144, 0.24);
+    color: var(--t1);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-switcher {
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(53, 97, 144, 0.22);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-seg {
+    color: #475569;
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .theme-seg.theme-seg-active {
+    background: rgba(255, 255, 255, 0.92);
+    color: #15202e;
+    box-shadow: inset 0 0 0 1px rgba(53, 97, 144, 0.2);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .btn-music-pill {
+    --music-pill-bg: rgba(255, 255, 255, 0.48);
+    --music-pill-bd: rgba(53, 97, 144, 0.24);
+    --music-pill-bg-hover: rgba(255, 255, 255, 0.64);
+    --music-pill-bd-hover: rgba(53, 97, 144, 0.3);
+  }
+  .theme-glass.glass-has-bg:not(.glass-onwall-light-text) #find-bar input {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(53, 97, 144, 0.22);
+    color: var(--t1);
+  }
+  .platform-win32 .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .tbtn,
+  .platform-linux .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .tbtn {
+    color: var(--t3);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .platform-win32 .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .tbtn:hover,
+  .platform-linux .theme-glass.glass-has-bg:not(.glass-onwall-light-text) .tbtn:hover {
+    color: var(--t1);
+  }
+
   /* 深色 + 无自定义背景：全屏遮罩保持关闭（与浅色规则一致，由 :not(.glass-has-bg) 控制） */
   .theme-glass:not(.glass-has-bg) #glass-overlay {
     opacity: 0;
@@ -730,7 +818,7 @@ body.theme-dark #glass-overlay {
   height:40px; min-height:40px;
   display:flex; align-items:center; justify-content:space-between;
   background:var(--bg-bar); border-bottom:1px solid var(--bd);
-  padding:0 10px; flex-shrink:0; gap:8px; overflow-x:auto;overflow-y:hidden;
+  padding:0 14px 0 10px; flex-shrink:0; gap:8px; overflow-x:auto;overflow-y:hidden;
 }
 #mode-tabs.mode-tabs-shell{
   display:flex;align-items:center;gap:2px;flex-shrink:0;
@@ -765,7 +853,21 @@ body.theme-dark #glass-overlay {
   background:rgba(255,255,255,0.42);color:var(--t1);font-weight:600;
   box-shadow:0 1px 2px rgba(0,0,0,0.06);
 }
-#mode-actions{display:flex;align-items:center;gap:4px;flex-shrink:1;min-width:0;overflow-x:auto}
+/* 左侧可横向滚动；右侧音效/主题/设置固定不收缩，避免窄窗口时贴边裁切 */
+#mode-actions{
+  display:flex;align-items:center;gap:6px;flex:1 1 0%;min-width:0;
+  justify-content:flex-end;
+}
+#mode-actions-scroll{
+  display:flex;align-items:center;gap:4px;min-width:0;flex:0 1 auto;
+  overflow-x:auto;overflow-y:hidden;scrollbar-gutter:stable;
+  -webkit-overflow-scrolling:touch;
+  padding-inline-end:2px;
+}
+#mode-actions-trail{
+  display:flex;align-items:center;gap:4px;flex-shrink:0;
+  padding-inline-end:2px;
+}
 
 .action-btn{
   height:28px;padding:0 12px;font-size:12px;font-weight:500;
@@ -1176,25 +1278,30 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
   color: #a8c4eb;
 }
 
-/* 毛玻璃 + 自定义壁纸：条底常显深，深色字模式与浅色字模式均显著提亮 */
-.theme-glass.glass-has-bg #statusbar {
-  color: #d8dee9;
+/*
+ * 毛玻璃 + 壁纸：状态栏文字须跟「浅色条/深色条」走，不能一律用浅灰字。
+ * 浅色毛玻璃（:not(.glass-onwall-light-text)）：条底偏亮 → 用 --t3/--accent。
+ * 深色毛玻璃（.glass-onwall-light-text）：条底偏暗 → 用浅色字。
+ */
+.theme-glass.glass-has-bg:not(.glass-onwall-light-text) #statusbar {
+  color: var(--t3);
 }
-.theme-glass.glass-has-bg #status-mode {
-  color: #b6d4ff;
+.theme-glass.glass-has-bg:not(.glass-onwall-light-text) #status-mode {
+  color: var(--accent);
+  font-weight: 700;
 }
-.theme-glass.glass-has-bg #music-status {
-  color: #b6d4ff;
+.theme-glass.glass-has-bg:not(.glass-onwall-light-text) #music-status {
+  color: var(--accent);
 }
 
 .theme-glass.glass-has-bg.glass-onwall-light-text #statusbar {
-  color: #f8fafc;
+  color: #f1f5f9;
 }
 .theme-glass.glass-has-bg.glass-onwall-light-text #status-mode {
-  color: #e0f0ff;
+  color: #bfdbfe;
 }
 .theme-glass.glass-has-bg.glass-onwall-light-text #music-status {
-  color: #cfe8ff;
+  color: #bfdbfe;
 }
 
 /* ════ 面板 ════════════════════════════════════════════════ */
@@ -1595,6 +1702,32 @@ select{
   width:100%;padding:7px 10px;font-size:13px;font-family:var(--font-ui);
   background:var(--bg-hover);color:var(--t1);
   border:1px solid var(--bd);border-radius:var(--radius-md);cursor:pointer;
+}
+/* 深色毛玻璃：系统下拉列表常为浅色底，须显式指定 option 底色与字色，避免白字叠白底 */
+.theme-glass.glass-has-bg.glass-onwall-light-text #settings-panel {
+  color-scheme: dark;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #settings-panel select {
+  background-color: rgba(30, 41, 59, 0.92);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #settings-panel select:focus {
+  border-color: rgba(147, 197, 253, 0.55);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text #settings-panel select option {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+/* 浅色毛玻璃：提示系统控件用浅色方案，下拉项保持深字浅底（Chromium/Electron 下多数有效） */
+.theme-glass.glass-has-bg:not(.glass-onwall-light-text) #settings-panel {
+  color-scheme: light;
+}
+.theme-glass.glass-has-bg:not(.glass-onwall-light-text) #settings-panel select option {
+  background-color: #ffffff;
+  color: #1e293b;
 }
 .toggle-label{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--t1)}
 .toggle-label input[type="checkbox"]{display:none}
