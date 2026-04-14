@@ -4,6 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>pongrabbit-MD</title>
+<!-- 免费商用：Inter / Noto Sans SC / JetBrains Mono 均为 SIL OFL 1.1，随 @fontsource 打包（见 node_modules 各包内 LICENSE） -->
+<link rel="stylesheet" href="../../node_modules/@fontsource-variable/inter/index.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/latin-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/latin-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/latin-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/latin-700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/chinese-simplified-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/chinese-simplified-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/chinese-simplified-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/chinese-simplified-700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/jetbrains-mono/latin-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/jetbrains-mono/latin-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/jetbrains-mono/latin-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/jetbrains-mono/latin-700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/latin-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/latin-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/latin-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/latin-700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/chinese-simplified-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/chinese-simplified-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/chinese-simplified-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/chinese-simplified-700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-sans/latin-400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-sans/latin-500.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-sans/latin-600.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ibm-plex-sans/latin-700.css">
+<link rel="stylesheet" href="../../node_modules/font-smiley-sans/style.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="../../node_modules/highlight.js/styles/github.min.css"      id="hljs-light">
 <link rel="stylesheet" href="../../node_modules/highlight.js/styles/github-dark.min.css" id="hljs-dark" disabled>
@@ -45,8 +72,8 @@
       <div class="tool-sep"></div>
       <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
       <button type="button" class="action-btn" id="btn-export-html">导出 HTML</button>
-      <button type="button" class="action-btn" id="btn-export-xhs-short" title="按 1080×1440 分页导出多张 PNG，在选定目录下创建以标题命名的文件夹">短图 3:4</button>
-      <button type="button" class="action-btn" id="btn-export-xhs-long" title="整篇导出为一张 1080 宽纵向长图，文件名默认与文档标题一致">长图 3:4</button>
+      <button type="button" class="action-btn" id="btn-export-xhs-short" title="选风格与字体；短图固定 2× 像素分页（约 2160×2880）">短图 3:4</button>
+      <button type="button" class="action-btn" id="btn-export-xhs-long" title="选风格与字体；长图固定 2× 像素（宽约 2160）">长图 3:4</button>
     </div>
     <div id="mode-actions-trail">
       <div class="tool-sep"></div>
@@ -244,6 +271,22 @@
     <div class="dialog-btns">
       <button type="button" id="prompt-dialog-cancel">取消</button>
       <button type="button" id="prompt-dialog-ok" class="primary-btn">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 小红书导出：六种高级感配色 + 四种免费商用正文字体 -->
+<div id="xhs-style-dialog" class="dialog" style="display:none">
+  <div class="dialog-box xhs-style-dialog-box">
+    <div class="dialog-title">导出风格与字体</div>
+    <p class="xhs-style-dialog-hint">选择配色与正文字体；导出固定为 2× 像素（约 2160 宽，放大更清晰）。每张图右下角有小签名。</p>
+    <div class="xhs-export-section-label">配色</div>
+    <div id="xhs-style-grid" class="xhs-style-grid" role="listbox" aria-label="导出风格"></div>
+    <div class="xhs-export-section-label xhs-export-section-label-mt">正文字体</div>
+    <div id="xhs-font-grid" class="xhs-font-grid" role="listbox" aria-label="导出字体"></div>
+    <div class="dialog-btns">
+      <button type="button" id="xhs-style-cancel">取消</button>
+      <button type="button" id="xhs-style-ok" class="primary-btn">继续导出</button>
     </div>
   </div>
 </div>

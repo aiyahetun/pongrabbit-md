@@ -2,6 +2,9 @@
 **/node_modules/
 **/dist/
 **/dist-build/
+**/dist2/
+**/dist3/
+**/dist4/
 **/dist-install/
 **/out/
 *.log

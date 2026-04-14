@@ -56,7 +56,11 @@ function defaultConfig () {
     musicFolder: '',
     musicVolume: 0.6,
     workspaceRoot: '',
-    sidebarCollapsed: false
+    sidebarCollapsed: false,
+    /** 小红书短图/长图导出配色风格 id */
+    xhsExportStyle: 'slate-blue-frost',
+    /** 导出正文字体：noto-serif-sc | noto-sans-sc | smiley-sans | ibm-plex */
+    xhsExportFont: 'noto-sans-sc'
   }
 }
 

@@ -90,6 +90,7 @@ async function init() {
   setupResizer()
   setupPanels()
   setupPromptDialog()
+  setupXhsStyleDialog()
   setupWorkspaceSidebar()
   setupKeyboard()
   setupMenu()
@@ -1030,6 +1031,7 @@ function setupKeyboard(){
       if($('table-dialog').style.display!=='none'){$('table-dialog').style.display='none';return}
       if($('link-dialog').style.display!=='none'){$('link-dialog').style.display='none';return}
       if($('prompt-dialog').style.display!=='none'){$('prompt-dialog-cancel').click();return}
+      if($('xhs-style-dialog').style.display!=='none'){$('xhs-style-cancel').click();return}
       closeAllPanels()
     }
     if(e.key==='F11'){e.preventDefault();toggleFocus()}
@@ -1118,9 +1120,135 @@ function openPromptDialog({title,label,defaultValue,placeholder}){
   })
 }
 
-// ════ 小红书 3:4 图片导出（1080×1440，基于预览渲染 + html2canvas）══════════
-const XHS_PAGE_W = 1080
-const XHS_PAGE_H = 1440
+/** 六种高级感配色（与项目目录「六种高级感配色 / code.html」卡片一致） */
+const XHS_EXPORT_STYLES = [
+  { id: 'misty-rose', name: '晨雾玫瑰', sub: '柔和朦胧', dark: true, canvasBg: '#3a3234', strip: ['#F5E6E8', '#D5B9B2', '#4A3F3F'] },
+  { id: 'warm-espresso', name: '暖调浓缩', sub: '沉稳氛围', dark: true, canvasBg: '#1E120D', strip: ['#1E120D', '#D4A373', '#FDFBF7'] },
+  { id: 'deep-ocean-moss', name: '深海苔绿', sub: '森系叙事', dark: true, canvasBg: '#1A2E2C', strip: ['#1A2E2C', '#4A6D66', '#E0E7E5'] },
+  { id: 'slate-blue-frost', name: '雾蓝霜灰', sub: '专业浅色', dark: false, canvasBg: '#CFD8DC', strip: ['#CFD8DC', '#607D8B', '#263238'] },
+  { id: 'sage-earth', name: '鼠尾草大地', sub: '自然 calm', dark: false, canvasBg: '#E8EDEB', strip: ['#E8EDEB', '#94A79E', '#4A5D54'] },
+  { id: 'champagne-linen', name: '香槟亚麻', sub: 'Quiet luxury', dark: false, canvasBg: '#F9F5F0', strip: ['#F9F5F0', '#D4C5B3', '#2D2926'] }
+]
+
+function xhsStyleById (id) {
+  return XHS_EXPORT_STYLES.find(s => s.id === id) || XHS_EXPORT_STYLES[3]
+}
+
+/** 导出正文字体（SIL OFL；得意黑 Smiley Sans 随 font-smiley-sans 包） */
+const XHS_EXPORT_FONTS = [
+  { id: 'noto-serif-sc', name: 'Noto Serif', sub: '衬线' },
+  { id: 'noto-sans-sc', name: 'Noto Sans', sub: '无衬线' },
+  { id: 'smiley-sans', name: '得意黑', sub: 'Smiley Sans' },
+  { id: 'ibm-plex', name: 'IBM Plex', sub: '无衬线中西' }
+]
+
+function xhsFontById (id) {
+  return XHS_EXPORT_FONTS.find(f => f.id === id) || XHS_EXPORT_FONTS[1]
+}
+
+let xhsStyleDialogResolver = null
+function setupXhsStyleDialog () {
+  const dlg = $('xhs-style-dialog')
+  const grid = $('xhs-style-grid')
+  const fgrid = $('xhs-font-grid')
+  const close = (value) => {
+    dlg.style.display = 'none'
+    const cb = xhsStyleDialogResolver
+    xhsStyleDialogResolver = null
+    if (cb) cb(value)
+  }
+  $('xhs-style-cancel').onclick = () => close(null)
+  $('xhs-style-ok').onclick = () => {
+    const sel = grid.querySelector('.xhs-style-card.selected')
+    const sid = sel && sel.dataset.styleId
+    const fsel = fgrid.querySelector('.xhs-font-card.selected')
+    const fid = fsel && fsel.dataset.fontId
+    if (!sid || !fid) return
+    cfg.xhsExportStyle = sid
+    cfg.xhsExportFont = fid
+    void window.mobiAPI.saveConfig({ xhsExportStyle: sid, xhsExportFont: fid })
+    close({ styleId: sid, fontId: fid })
+  }
+  dlg.onclick = e => { if (e.target === dlg) close(null) }
+  grid.onclick = e => {
+    const card = e.target.closest('.xhs-style-card')
+    if (!card || !grid.contains(card)) return
+    grid.querySelectorAll('.xhs-style-card').forEach(c => { c.classList.toggle('selected', c === card) })
+  }
+  fgrid.onclick = e => {
+    const card = e.target.closest('.xhs-font-card')
+    if (!card || !fgrid.contains(card)) return
+    fgrid.querySelectorAll('.xhs-font-card').forEach(c => { c.classList.toggle('selected', c === card) })
+  }
+}
+
+function openXhsStylePicker () {
+  return new Promise(resolve => {
+    xhsStyleDialogResolver = resolve
+    const dlg = $('xhs-style-dialog')
+    const grid = $('xhs-style-grid')
+    const fgrid = $('xhs-font-grid')
+    const initial = (cfg.xhsExportStyle && XHS_EXPORT_STYLES.some(s => s.id === cfg.xhsExportStyle))
+      ? cfg.xhsExportStyle
+      : 'slate-blue-frost'
+    const initialFont = (cfg.xhsExportFont && XHS_EXPORT_FONTS.some(f => f.id === cfg.xhsExportFont))
+      ? cfg.xhsExportFont
+      : 'noto-sans-sc'
+    grid.innerHTML = ''
+    for (const def of XHS_EXPORT_STYLES) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'xhs-style-card' + (def.id === initial ? ' selected' : '')
+      b.dataset.styleId = def.id
+      b.setAttribute('role', 'option')
+      const strip = document.createElement('div')
+      strip.className = 'xhs-style-card-strip'
+      for (const c of def.strip) {
+        const sp = document.createElement('span')
+        sp.style.background = c
+        strip.appendChild(sp)
+      }
+      const nm = document.createElement('div')
+      nm.className = 'xhs-style-card-name'
+      nm.textContent = def.name
+      const sub = document.createElement('div')
+      sub.className = 'xhs-style-card-sub'
+      sub.textContent = def.sub
+      b.appendChild(strip)
+      b.appendChild(nm)
+      b.appendChild(sub)
+      grid.appendChild(b)
+    }
+    fgrid.innerHTML = ''
+    for (const def of XHS_EXPORT_FONTS) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'xhs-font-card' + (def.id === initialFont ? ' selected' : '')
+      b.dataset.fontId = def.id
+      b.setAttribute('role', 'option')
+      const nm = document.createElement('div')
+      nm.className = 'xhs-font-card-name'
+      nm.textContent = def.name
+      const sub = document.createElement('div')
+      sub.className = 'xhs-font-card-sub'
+      sub.textContent = def.sub
+      b.appendChild(nm)
+      b.appendChild(sub)
+      fgrid.appendChild(b)
+    }
+    dlg.style.display = 'flex'
+    requestAnimationFrame(() => {
+      const s = grid.querySelector('.xhs-style-card.selected')
+      if (s) s.focus()
+    })
+  })
+}
+
+// ════ 小红书 3:4 图片导出（版心 CSS 1080×1440；输出固定 2× 像素，html2canvas scale=2）══════════
+const XHS_LAYOUT_W = 1080
+const XHS_LAYOUT_H = 1440
+/** 相对版心的像素倍率（固定 2，不再让用户选择） */
+const XHS_EXPORT_SCALE = 2
 const XHS_MAX_CANVAS_H = 32000
 
 async function getXhsExportTitle () {
@@ -1155,23 +1283,23 @@ function canvasToPngDataUrl (canvas) {
   })
 }
 
-function normalizeCanvasToWidth1080 (src) {
-  const tw = XHS_PAGE_W
+function normalizeCanvasToTargetWidth (src, fillColor, targetW) {
+  const tw = Math.max(1, Math.round(targetW))
   const th = Math.max(1, Math.round(src.height * (tw / src.width)))
   const c = document.createElement('canvas')
   c.width = tw
   c.height = th
   const ctx = c.getContext('2d')
-  ctx.fillStyle = '#fff'
+  ctx.fillStyle = fillColor || '#ffffff'
   ctx.fillRect(0, 0, tw, th)
   ctx.imageSmoothingEnabled = true
   ctx.drawImage(src, 0, 0, tw, th)
   return c
 }
 
-function sliceCanvasToFixedPages (normalizedCanvas) {
-  const W = XHS_PAGE_W
-  const H = XHS_PAGE_H
+function sliceCanvasToFixedPages (normalizedCanvas, fillColor, pageW, pageH) {
+  const W = Math.max(1, Math.round(pageW))
+  const H = Math.max(1, Math.round(pageH))
   const totalH = normalizedCanvas.height
   const pages = []
   const n = Math.max(1, Math.ceil(totalH / H))
@@ -1180,7 +1308,7 @@ function sliceCanvasToFixedPages (normalizedCanvas) {
     c.width = W
     c.height = H
     const ctx = c.getContext('2d')
-    ctx.fillStyle = '#fff'
+    ctx.fillStyle = fillColor || '#ffffff'
     ctx.fillRect(0, 0, W, H)
     const sy = i * H
     const sh = Math.min(H, Math.max(0, totalH - sy))
@@ -1190,15 +1318,127 @@ function sliceCanvasToFixedPages (normalizedCanvas) {
   return pages
 }
 
+/** 右下角小签名（短图每张、长图一张）；描边保证在渐变背景上仍可见 */
+function stampExportSignature (canvas, dark) {
+  const sc = XHS_EXPORT_SCALE
+  const text = 'pongrabbit-md'
+  const pad = Math.round(14 * sc)
+  const fs = Math.round(13 * sc)
+  const ctx = canvas.getContext('2d')
+  ctx.save()
+  ctx.font = `600 ${fs}px system-ui,"Segoe UI","Noto Sans SC",sans-serif`
+  ctx.textBaseline = 'bottom'
+  ctx.textAlign = 'right'
+  ctx.lineJoin = 'round'
+  ctx.miterLimit = 2
+  const x = canvas.width - pad
+  const y = canvas.height - Math.round(10 * sc)
+  const lw = Math.max(2, Math.round(2.5 * sc))
+  ctx.lineWidth = lw
+  if (dark) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+  } else {
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+    ctx.fillStyle = 'rgba(22,30,45,0.9)'
+  }
+  ctx.strokeText(text, x, y)
+  ctx.fillText(text, x, y)
+  ctx.restore()
+}
+
 function clearXhsExportHost () {
   const h = $('xhs-export-host')
   if (h) h.innerHTML = ''
 }
 
-async function buildXhsExportSurface () {
+/**
+ * html2canvas 只接收 surface 子树时，head 里 link 的 WebFont 有时不参与测量；得意黑易回退成 Noto。
+ * 将 woff2 以绝对 URL 的 @font-face 插到 surface 内（随子树一起参与解析），并 fonts.load。
+ */
+function injectSmileySansFaceIntoSurface (surface) {
+  if (surface.querySelector('style[data-xhs-smiley-face]')) return
+  let woffHref
+  try {
+    woffHref = new URL('../../node_modules/font-smiley-sans/SmileySans-Oblique.ttf.woff2', window.location.href).href
+  } catch (e) {
+    console.warn('[xhs-export] smiley woff url', e)
+    return
+  }
+  const tag = document.createElement('style')
+  tag.setAttribute('data-xhs-smiley-face', '1')
+  const u = JSON.stringify(woffHref)
+  tag.textContent = '@font-face{font-family:"smiley-sans";font-style:normal;font-weight:400;font-display:block;src:url(' + u + ') format("woff2");}'
+  surface.insertBefore(tag, surface.firstChild)
+}
+
+/** 导出前去掉当前文档绝对路径、file:// 链接等，避免出现在截图里 */
+function stripDocPathFromXhsSurface (surface) {
+  const doc = currentFile ? String(currentFile) : ''
+  const variants = []
+  if (doc) {
+    variants.push(doc, doc.replace(/\\/g, '/'), doc.replace(/\//g, '\\'))
+  }
+  const uniq = [...new Set(variants.filter(s => s && s.length > 1))]
+
+  for (const a of surface.querySelectorAll('a[href]')) {
+    const href = (a.getAttribute('href') || '').trim()
+    if (!/^file:/i.test(href)) continue
+    a.setAttribute('href', '#')
+    const txt = (a.textContent || '').trim()
+    const looksPath = /^file:/i.test(txt) ||
+      /^[a-zA-Z]:[/\\]/.test(txt) ||
+      uniq.some(v => v && txt.includes(v))
+    if (!txt || looksPath) a.textContent = '本地链接'
+  }
+
+  const tw = document.createTreeWalker(surface, NodeFilter.SHOW_TEXT, null)
+  let tn
+  while ((tn = tw.nextNode())) {
+    const p = tn.parentElement
+    if (!p || p.closest('pre, code')) continue
+    let s = tn.nodeValue
+    if (!s) continue
+    let next = s
+    for (const v of uniq) {
+      if (v && next.includes(v)) next = next.split(v).join('')
+    }
+    if (next !== s) tn.nodeValue = next.replace(/[ \t]{2,}/g, ' ')
+  }
+
+  for (const img of surface.querySelectorAll('img[title], img[alt]')) {
+    for (const attr of ['title', 'alt']) {
+      const v = img.getAttribute(attr)
+      if (!v) continue
+      if (uniq.some(prefix => prefix && v.includes(prefix))) {
+        img.setAttribute(attr, attr === 'alt' ? '' : '')
+      }
+    }
+  }
+}
+
+async function waitXhsExportFonts (fontId) {
+  if (fontId !== 'smiley-sans') return
+  const sc = XHS_EXPORT_SCALE
+  const px = n => Math.max(8, Math.round(n * sc)) + 'px'
+  try {
+    await document.fonts.load('400 ' + px(17) + ' "smiley-sans"')
+    await document.fonts.load('400 ' + px(28) + ' "smiley-sans"')
+    await document.fonts.load('400 ' + px(24) + ' "smiley-sans"')
+  } catch (e) {
+    console.warn('[xhs-export] fonts.load smiley-sans', e)
+  }
+  try {
+    await document.fonts.ready
+  } catch (_) {}
+}
+
+async function buildXhsExportSurface (styleId, fontId) {
   await renderPreview()
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
   if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载，请检查 node_modules 与 index.html 脚本引用')
+  const st = xhsStyleById(styleId)
+  const fd = xhsFontById(fontId)
   let host = $('xhs-export-host')
   if (!host) {
     host = document.createElement('div')
@@ -1207,8 +1447,11 @@ async function buildXhsExportSurface () {
   }
   host.innerHTML = ''
   const surface = document.createElement('div')
-  surface.className = 'xhs-export-surface'
+  surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id
+  if (st.dark) surface.classList.add('xhs-export--dark')
   surface.innerHTML = previewEl.innerHTML
+  stripDocPathFromXhsSurface(surface)
+  if (fd.id === 'smiley-sans') injectSmileySansFaceIntoSurface(surface)
   host.appendChild(surface)
   for (const img of surface.querySelectorAll('img')) {
     const s = img.getAttribute('src')
@@ -1234,6 +1477,11 @@ async function buildXhsExportSurface () {
   }
   await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
   await new Promise(r => setTimeout(r, 120))
+  await waitXhsExportFonts(fd.id)
+  try {
+    await document.fonts.ready
+  } catch (_) {}
+  await new Promise(r => setTimeout(r, 80))
   return surface
 }
 
@@ -1242,31 +1490,38 @@ async function exportXhsShort () {
   try {
     title = await getXhsExportTitle()
     if (title == null) return
+    const pickOpts = await openXhsStylePicker()
+    if (pickOpts == null) return
+    const { styleId, fontId } = pickOpts
+    const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
+    const pageH = XHS_LAYOUT_H * XHS_EXPORT_SCALE
     const pick = await window.mobiAPI.xhsExportPickDir()
     if (!pick || pick.cancelled || !pick.path) return
-    const surface = await buildXhsExportSurface()
+    const st = xhsStyleById(styleId)
+    const surface = await buildXhsExportSurface(styleId, fontId)
     const raw = await window.html2canvas(surface, {
-      backgroundColor: '#ffffff',
-      scale: 1,
+      backgroundColor: st.canvasBg,
+      scale: XHS_EXPORT_SCALE,
       useCORS: true,
       allowTaint: true,
       logging: false
     })
     clearXhsExportHost()
-    const norm = normalizeCanvasToWidth1080(raw)
+    const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
     if (norm.height > XHS_MAX_CANVAS_H) {
       alert('文档过长，请精简内容或改用长图导出（仍可能受系统限制）。')
       return
     }
-    const pages = sliceCanvasToFixedPages(norm)
+    const pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
     const files = []
     for (let i = 0; i < pages.length; i++) {
+      stampExportSignature(pages[i], st.dark)
       const data = await canvasToPngDataUrl(pages[i])
       files.push({ name: `${String(i + 1).padStart(2, '0')}.png`, data })
     }
     const r = await window.mobiAPI.xhsExportWriteMany({ parentPath: pick.path, folderName: title, files })
     if (r && r.error) { alert(r.error); return }
-    alert(`已导出 ${pages.length} 张图片（每张 ${XHS_PAGE_W}×${XHS_PAGE_H}）：\n${r.dir}`)
+    alert(`已导出 ${pages.length} 张图片（每张约 ${pageW}×${pageH}，${XHS_EXPORT_SCALE}× 采样）：\n${r.dir}`)
   } catch (e) {
     clearXhsExportHost()
     console.error(e)
@@ -1279,26 +1534,32 @@ async function exportXhsLong () {
   try {
     title = await getXhsExportTitle()
     if (title == null) return
+    const pickOpts = await openXhsStylePicker()
+    if (pickOpts == null) return
+    const { styleId, fontId } = pickOpts
+    const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
     const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
     if (!p || p.cancelled || !p.filePath) return
-    const surface = await buildXhsExportSurface()
+    const st = xhsStyleById(styleId)
+    const surface = await buildXhsExportSurface(styleId, fontId)
     const raw = await window.html2canvas(surface, {
-      backgroundColor: '#ffffff',
-      scale: 1,
+      backgroundColor: st.canvasBg,
+      scale: XHS_EXPORT_SCALE,
       useCORS: true,
       allowTaint: true,
       logging: false
     })
     clearXhsExportHost()
-    const norm = normalizeCanvasToWidth1080(raw)
+    const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
     if (norm.height > XHS_MAX_CANVAS_H) {
       alert('文档过长，超出单张图片安全高度，请分段导出短图。')
       return
     }
+    stampExportSignature(norm, st.dark)
     const data = await canvasToPngDataUrl(norm)
     const w = await window.mobiAPI.xhsExportWriteOne({ filePath: p.filePath, data })
     if (w && w.error) { alert(w.error); return }
-    alert('长图已保存（宽 ' + XHS_PAGE_W + 'px）：\n' + p.filePath)
+    alert(`长图已保存（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样）：\n` + p.filePath)
   } catch (e) {
     clearXhsExportHost()
     console.error(e)

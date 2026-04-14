@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700;800;900&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #121414;
+        }
+        .mesh-gradient-bg {
+            background: radial-gradient(at 0% 0%, rgba(99, 219, 186, 0.15) 0px, transparent 50%),
+                        radial-gradient(at 100% 0%, rgba(215, 195, 176, 0.1) 0px, transparent 50%),
+                        radial-gradient(at 100% 100%, rgba(217, 186, 247, 0.1) 0px, transparent 50%),
+                        radial-gradient(at 0% 100%, rgba(255, 180, 171, 0.08) 0px, transparent 50%);
+        }
+        .editorial-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#a386c0",
+                        "inverse-surface": "#e2e2e2",
+                        "secondary-container": "#544738",
+                        "tertiary": "#d9baf7",
+                        "on-secondary-container": "#c8b5a3",
+                        "on-surface": "#e2e2e2",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed": "#270e41",
+                        "primary": "#63dbba",
+                        "surface-variant": "#333535",
+                        "surface-container-highest": "#333535",
+                        "surface-container-lowest": "#0d0f0f",
+                        "background": "#121414",
+                        "secondary": "#d7c3b0",
+                        "error": "#ffb4ab",
+                        "tertiary-fixed": "#efdbff",
+                        "tertiary-container": "#371f51",
+                        "primary-container": "#003126",
+                        "surface-tint": "#63dbba",
+                        "on-secondary-fixed": "#241a0e",
+                        "on-primary": "#00382c",
+                        "primary-fixed-dim": "#63dbba",
+                        "on-background": "#e2e2e2",
+                        "surface": "#121414",
+                        "outline-variant": "#424847",
+                        "error-container": "#93000a",
+                        "on-primary-fixed": "#002018",
+                        "tertiary-fixed-dim": "#d9baf7",
+                        "on-tertiary-fixed-variant": "#543c6f",
+                        "surface-bright": "#383939",
+                        "secondary-fixed-dim": "#d7c3b0",
+                        "inverse-on-surface": "#2f3131",
+                        "on-secondary": "#3a2e21",
+                        "surface-container-low": "#1a1c1c",
+                        "inverse-primary": "#006b56",
+                        "on-secondary-fixed-variant": "#524436",
+                        "secondary-fixed": "#f4dfcb",
+                        "surface-dim": "#121414",
+                        "on-tertiary": "#3d2557",
+                        "on-surface-variant": "#c2c8c6",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed": "#81f8d5",
+                        "on-primary-fixed-variant": "#005140",
+                        "surface-container-high": "#282a2a",
+                        "on-primary-container": "#1aa486",
+                        "outline": "#8c9291",
+                        "surface-container": "#1e2020"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Epilogue"],
+                        "body": ["Manrope"],
+                        "label": ["Manrope"]
+                    }
+                },
+            }
+        }
+    </script>
+<style>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body mesh-gradient-bg min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#121414]/80 backdrop-blur-xl shadow-[0px_10px_30px_rgba(0,0,0,0.08)] flex justify-between items-center px-6 h-16">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#63dbba]">menu</span>
+<span class="text-2xl font-black text-[#63dbba] tracking-[-0.02em] font-['Epilogue']">Curator</span>
+</div>
+<div class="hidden md:flex gap-8">
+<a class="text-[#63dbba] font-['Manrope'] uppercase tracking-[0.05em] text-[10px] font-bold" href="#">Gallery</a>
+<a class="text-slate-400 font-['Manrope'] uppercase tracking-[0.05em] text-[10px] font-bold hover:text-[#63dbba] transition-colors" href="#">Palette</a>
+<a class="text-slate-400 font-['Manrope'] uppercase tracking-[0.05em] text-[10px] font-bold hover:text-[#63dbba] transition-colors" href="#">Saved</a>
+<a class="text-slate-400 font-['Manrope'] uppercase tracking-[0.05em] text-[10px] font-bold hover:text-[#63dbba] transition-colors" href="#">Profile</a>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30">
+<img alt="professional headshot" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqe3HRMMYoEJ2WjOgo7gQco9ZRHRZAaeARTpReHJCakk41z7TzQkRLVk0vg-Q8y8mM5Nopp2biwifNFcGsHBbSoWAz8aESqyD6kxpGSw660b9UhmTKdQkdFgQt7eX7tmH9y4_BEnLMwEfYfCmvLbI0_8l9xuUJZOMBbwl2nZZiNN6i86QaD8zTp0OcQyIoL6aEFhw8fzBY6eus2BQ9ZvpM2Yd3uMefe9ufYiTyH1sTQmQ4bWPaVlsmdKbCOPbqm_x1smkzd7Omqk0"/>
+</div>
+</header>
+<main class="pt-32 px-6 max-w-7xl mx-auto">
+<!-- Hero Section -->
+<div class="mb-20">
+<h1 class="text-6xl md:text-8xl font-black font-headline tracking-tighter leading-none mb-6">
+                High-End Palette <span class="text-primary italic">Gallery</span>
+</h1>
+<p class="text-outline text-lg max-w-2xl font-body leading-relaxed">
+                An editorial exploration of tonal contrast and chromatic harmony. From deep midnight shadows to soft earth-toned daylight, discover the precise resonance of professional color curation.
+            </p>
+</div>
+<!-- Palette Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- 1. Misty Morning Rose (NEW) -->
+<div class="group relative bg-[#F5E6E8]/10 backdrop-blur-xl p-8 rounded-xl border border-white/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#D5B9B2] text-[10px] mb-2 block">Soft &amp; Ethereal</span>
+<h3 class="text-2xl font-bold font-headline text-[#F5E6E8]">Misty Morning Rose</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#D5B9B2]/20 transition-colors">
+<span class="material-symbols-outlined text-[#D5B9B2] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#F5E6E8] flex items-end p-2"><span class="text-[8px] font-mono text-[#4A3F3F]/60">#F5E6E8</span></div>
+<div class="flex-1 bg-[#D5B9B2] flex items-end p-2"><span class="text-[8px] font-mono text-[#4A3F3F]/60">#D5B9B2</span></div>
+<div class="flex-1 bg-[#4A3F3F] flex items-end p-2"><span class="text-[8px] font-mono text-[#F5E6E8]/60">#4A3F3F</span></div>
+</div>
+<div class="flex justify-between items-center text-outline text-xs">
+<span>Dusty Mauve Hues</span>
+<span class="font-mono opacity-50">v1.2.0</span>
+</div>
+</div>
+<!-- 2. Warm Espresso (KEEP) -->
+<div class="group relative bg-[#1E120D]/60 backdrop-blur-xl p-8 rounded-xl border border-white/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#D4A373] text-[10px] mb-2 block">Sophisticated</span>
+<h3 class="text-2xl font-bold font-headline text-[#FDFBF7]">Warm Espresso</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#D4A373]/20 transition-colors">
+<span class="material-symbols-outlined text-[#D4A373] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#1E120D] flex items-end p-2"><span class="text-[8px] font-mono text-white/40">#1E120D</span></div>
+<div class="flex-1 bg-[#D4A373] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#D4A373</span></div>
+<div class="flex-1 bg-[#FDFBF7] flex items-end p-2"><span class="text-[8px] font-mono text-[#1E120D]/60">#FDFBF7</span></div>
+</div>
+<div class="flex justify-between items-center text-outline text-xs">
+<span>Cozy Atmosphere</span>
+<span class="font-mono opacity-50">v1.1.0</span>
+</div>
+</div>
+<!-- 3. Deep Ocean Moss (NEW) -->
+<div class="group relative bg-[#1A2E2C]/80 backdrop-blur-xl p-8 rounded-xl border border-white/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#4A6D66] text-[10px] mb-2 block">Moody Narrative</span>
+<h3 class="text-2xl font-bold font-headline text-[#E0E7E5]">Deep Ocean Moss</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#4A6D66]/20 transition-colors">
+<span class="material-symbols-outlined text-[#4A6D66] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#1A2E2C] flex items-end p-2"><span class="text-[8px] font-mono text-white/40">#1A2E2C</span></div>
+<div class="flex-1 bg-[#4A6D66] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#4A6D66</span></div>
+<div class="flex-1 bg-[#E0E7E5] flex items-end p-2"><span class="text-[8px] font-mono text-[#1A2E2C]/60">#E0E7E5</span></div>
+</div>
+<div class="flex justify-between items-center text-outline text-xs">
+<span>Forest depths</span>
+<span class="font-mono opacity-50">v0.8.4</span>
+</div>
+</div>
+<!-- 4. Slate Blue Frost (KEEP) -->
+<div class="group relative bg-[#CFD8DC]/90 backdrop-blur-xl p-8 rounded-xl border border-black/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#607D8B] text-[10px] mb-2 block">Professional Light</span>
+<h3 class="text-2xl font-bold font-headline text-[#263238]">Slate Blue Frost</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#607D8B]/20 transition-colors">
+<span class="material-symbols-outlined text-[#607D8B] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#CFD8DC] flex items-end p-2"><span class="text-[8px] font-mono text-[#263238]/60">#CFD8DC</span></div>
+<div class="flex-1 bg-[#607D8B] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#607D8B</span></div>
+<div class="flex-1 bg-[#263238] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#263238</span></div>
+</div>
+<div class="flex justify-between items-center text-[#263238]/60 text-xs">
+<span>Clean Aesthetic</span>
+<span class="font-mono opacity-50">v2.0.1</span>
+</div>
+</div>
+<!-- 5. Sage Earth (KEEP) -->
+<div class="group relative bg-[#E8EDEB]/90 backdrop-blur-xl p-8 rounded-xl border border-black/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#94A79E] text-[10px] mb-2 block">Organic Calm</span>
+<h3 class="text-2xl font-bold font-headline text-[#4A5D54]">Sage Earth</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#94A79E]/20 transition-colors">
+<span class="material-symbols-outlined text-[#94A79E] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#E8EDEB] flex items-end p-2"><span class="text-[8px] font-mono text-[#4A5D54]/60">#E8EDEB</span></div>
+<div class="flex-1 bg-[#94A79E] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#94A79E</span></div>
+<div class="flex-1 bg-[#4A5D54] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#4A5D54</span></div>
+</div>
+<div class="flex justify-between items-center text-[#4A5D54]/60 text-xs">
+<span>Botanical Soul</span>
+<span class="font-mono opacity-50">v1.2.3</span>
+</div>
+</div>
+<!-- 6. Champagne Linen (NEW) -->
+<div class="group relative bg-[#F9F5F0]/90 backdrop-blur-xl p-8 rounded-xl border border-black/5 shadow-2xl transition-all duration-300 hover:-translate-y-2">
+<div class="flex justify-between items-start mb-12">
+<div>
+<span class="label-sm font-label uppercase tracking-widest text-[#D4C5B3] text-[10px] mb-2 block">Quiet Luxury</span>
+<h3 class="text-2xl font-bold font-headline text-[#2D2926]">Champagne Linen</h3>
+</div>
+<button class="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#D4C5B3]/20 transition-colors">
+<span class="material-symbols-outlined text-[#D4C5B3] text-sm">share</span>
+</button>
+</div>
+<div class="flex h-32 gap-1 mb-6 rounded-lg overflow-hidden">
+<div class="flex-1 bg-[#F9F5F0] flex items-end p-2"><span class="text-[8px] font-mono text-[#2D2926]/60">#F9F5F0</span></div>
+<div class="flex-1 bg-[#D4C5B3] flex items-end p-2"><span class="text-[8px] font-mono text-white/80">#D4C5B3</span></div>
+<div class="flex-1 bg-[#2D2926] flex items-end p-2"><span class="text-[8px] font-mono text-white/60">#2D2926</span></div>
+</div>
+<div class="flex justify-between items-center text-[#2D2926]/60 text-xs">
+<span>Warm Minimalist</span>
+<span class="font-mono opacity-50">v4.0.0</span>
+</div>
+</div>
+</div>
+<!-- Featured Narrative Section -->
+<section class="mt-32 editorial-grid">
+<div class="col-span-12 md:col-span-7">
+<div class="aspect-video rounded-xl overflow-hidden shadow-2xl relative group">
+<img alt="minimalist abstract art" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlP4qDlDEUbqMU9XZ8rom3T8-72Q7CM9gzVR1tLUArXB-vq8cl0J4JKzwGGk4mzjFf4rOKlAA96wP8k1N3LhkACh9mPf4sSjl8conP2B5jZsaQJKGzaAlqlvEWGGLD5ZBd5SiWxS4-wsCq7IjnpwOkUXJQAmoLN4lbWC0AnNT6Yd_EFfrmvWIJxNdOJkz__a9zQ4rnQDQbwlVJjGZNkJ8Q7KwtTVdgpatSJIib0VwTb-4nMgss0qTgxcEZF_sAtujIMufd3hXusqU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background to-transparent opacity-60"></div>
+<div class="absolute bottom-8 left-8">
+<p class="text-primary font-bold tracking-widest text-xs uppercase mb-2">Curated Spotlight</p>
+<h2 class="text-4xl font-headline font-black text-white max-w-md">The Psychology of Minimalist Palettes</h2>
+</div>
+</div>
+</div>
+<div class="col-span-12 md:col-span-5 flex flex-col justify-center">
+<div class="p-8 md:p-0">
+<h4 class="text-xs uppercase tracking-[0.2em] text-outline mb-6 font-bold">Design Philosophy</h4>
+<p class="text-xl font-body text-on-surface mb-8 leading-relaxed italic">
+                        "Color is not just a visual property; it is a spatial experience that dictates the emotional velocity of an interface."
+                    </p>
+<div class="h-px w-24 bg-primary/30 mb-8"></div>
+<p class="text-sm text-outline leading-loose">
+                        By utilizing tonal layering and intentional white space, we create a rhythmic flow that guides the eye. These six palettes were engineered to satisfy both accessibility requirements and high-end aesthetic sensibilities.
+                    </p>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-2 bg-[#121414]/90 backdrop-blur-lg rounded-t-[2rem] z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.2)]">
+<div class="flex flex-col items-center justify-center bg-gradient-to-br from-[#63dbba] to-[#003126] text-[#121414] rounded-2xl p-3 active:scale-90 duration-150">
+<span class="material-symbols-outlined">grid_view</span>
+<span class="font-['Manrope'] uppercase tracking-[0.05em] text-[10px]">Gallery</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#8c9291] p-3 active:scale-90 duration-150 hover:text-[#63dbba] transition-all">
+<span class="material-symbols-outlined">palette</span>
+<span class="font-['Manrope'] uppercase tracking-[0.05em] text-[10px]">Palette</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#8c9291] p-3 active:scale-90 duration-150 hover:text-[#63dbba] transition-all">
+<span class="material-symbols-outlined">bookmark</span>
+<span class="font-['Manrope'] uppercase tracking-[0.05em] text-[10px]">Saved</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#8c9291] p-3 active:scale-90 duration-150 hover:text-[#63dbba] transition-all">
+<span class="material-symbols-outlined">person</span>
+<span class="font-['Manrope'] uppercase tracking-[0.05em] text-[10px]">Profile</span>
+</div>
+</nav>
+<!-- FAB for Palette Creator -->
+<button class="fixed right-6 bottom-24 md:bottom-10 w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary-container shadow-2xl flex items-center justify-center text-on-primary-container group hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-3xl group-hover:rotate-90 transition-transform">add</span>
+</button>
+</body></html>
