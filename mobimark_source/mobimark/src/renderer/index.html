@@ -41,6 +41,7 @@
       <button type="button" class="action-btn" id="btn-new">新建</button>
       <button type="button" class="action-btn" id="btn-open">打开</button>
       <button type="button" class="action-btn" id="btn-save">保存</button>
+      <button type="button" class="action-btn" id="btn-save-as" title="另存为（Ctrl+Shift+S）">另存为</button>
       <div class="tool-sep"></div>
       <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
       <button type="button" class="action-btn" id="btn-export-html">导出 HTML</button>
@@ -193,7 +194,11 @@
   <span id="status-chars">字符 0</span>
   <span id="status-lines">行 1</span>
   <div class="status-sep"></div>
-  <span id="status-file">未保存</span>
+  <div id="status-path-wrap" class="status-path-wrap" title="">
+    <span id="status-readonly-tag" class="status-readonly-tag" hidden>只读</span>
+    <span id="status-path" class="status-path">未保存文档</span>
+    <button type="button" class="status-copy-btn" id="btn-copy-doc-path" title="复制完整路径" disabled>复制路径</button>
+  </div>
   <div class="status-right">
     <span id="status-mode">可视化</span>
     <span id="status-encoding">UTF-8</span>

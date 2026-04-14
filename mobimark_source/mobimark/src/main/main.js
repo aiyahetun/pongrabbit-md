@@ -7,6 +7,26 @@ const crypto = require('crypto')
 const { pathToFileURL, fileURLToPath } = require('url')
 
 const ALLOW_EXT = ['.md', '.markdown', '.txt']
+/** 以只读方式打开的代码/配置文件（与 renderer/app.js 中 READONLY_CODE_EXTS 保持同步） */
+const CODE_DOC_READONLY_EXT = new Set([
+  '.json', '.jsonc', '.json5',
+  '.yaml', '.yml',
+  '.xml', '.xsl', '.xslt',
+  '.html', '.htm', '.xhtml',
+  '.css', '.scss', '.sass', '.less',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts', '.vue',
+  '.mdx',
+  '.py', '.pyw', '.pyi', '.rb', '.php', '.phtml',
+  '.java', '.kt', '.kts', '.gradle',
+  '.c', '.h', '.cpp', '.cxx', '.cc', '.hpp', '.hh', '.hxx',
+  '.cs', '.fs', '.fsx', '.vb',
+  '.go', '.rs', '.swift', '.dart', '.lua', '.r',
+  '.sql',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  '.toml', '.ini', '.cfg', '.conf', '.config', '.properties',
+  '.env', '.editorconfig', '.gitattributes', '.gitmodules',
+  '.svg', '.plist', '.log'
+])
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'])
 const IMAGE_EXT_IMPORT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'])
 
@@ -71,6 +91,15 @@ function allowedExt (filePath) {
   return ALLOW_EXT.includes(ext)
 }
 
+function isReadOnlyCodeDoc (filePath) {
+  const ext = path.extname(filePath || '').toLowerCase()
+  return CODE_DOC_READONLY_EXT.has(ext)
+}
+
+function allowedOpenExt (filePath) {
+  return allowedExt(filePath) || isReadOnlyCodeDoc(filePath)
+}
+
 function addRecent (filePath) {
   if (!filePath) return
   const list = config.recentFiles.filter(f => f !== filePath)
@@ -124,7 +153,7 @@ function fileFromArgv (argv) {
     const a = argv[i]
     if (!a || a.startsWith('-')) continue
     try {
-      if (fs.existsSync(a) && fs.statSync(a).isFile() && allowedExt(a)) return path.resolve(a)
+      if (fs.existsSync(a) && fs.statSync(a).isFile() && allowedOpenExt(a)) return path.resolve(a)
     } catch (_) {}
   }
   return null
@@ -158,12 +187,14 @@ function resolveAmbientPath (type) {
   return null
 }
 
-async function saveAsDialog (content) {
+async function saveAsDialog (content, opts = {}) {
+  const title = opts.title || '保存'
   const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-    title: '保存',
+    title,
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown'] },
-      { name: '文本', extensions: ['txt'] }
+      { name: '文本', extensions: ['txt'] },
+      { name: 'JSON', extensions: ['json'] }
     ]
   })
   if (canceled || !filePath) return { error: 'cancelled' }
@@ -387,7 +418,7 @@ if (!gotLock) {
   if (process.platform === 'darwin') {
     app.on('open-file', (event, filePath) => {
       event.preventDefault()
-      if (!allowedExt(filePath)) return
+      if (!allowedOpenExt(filePath)) return
       const abs = path.resolve(filePath)
       if (mainWindow) mainWindow.webContents.send('open-file-path', abs)
       else pendingInitialPath = abs
@@ -455,29 +486,33 @@ ipcMain.handle('consume-initial-file', () => {
 })
 
 ipcMain.handle('open-file-by-path', async (_, filePath) => {
-  if (!filePath || !allowedExt(filePath)) return { error: 'unsupported' }
+  if (!filePath || !allowedOpenExt(filePath)) return { error: 'unsupported' }
   try {
     const abs = path.resolve(filePath)
     const content = fs.readFileSync(abs, 'utf8')
     addRecent(abs)
-    return { content, filePath: abs }
+    return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
   } catch (e) {
     return { error: String(e.message) }
   }
 })
 
 ipcMain.handle('open-file', async () => {
+  const codeExts = [...CODE_DOC_READONLY_EXT].map(e => e.slice(1))
   const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-      { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }
+      { name: 'Markdown 与文本', extensions: ['md', 'markdown', 'txt'] },
+      { name: '代码与配置（只读打开）', extensions: codeExts }
     ]
   })
   if (canceled || !filePaths || !filePaths[0]) return null
   const filePath = filePaths[0]
+  if (!allowedOpenExt(filePath)) return { error: 'unsupported' }
   const content = fs.readFileSync(filePath, 'utf8')
   addRecent(filePath)
-  return { content, filePath }
+  const abs = path.resolve(filePath)
+  return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
 })
 
 ipcMain.handle('read-file', async (_, filePath) => {
@@ -491,6 +526,7 @@ ipcMain.handle('read-file', async (_, filePath) => {
 
 ipcMain.handle('save-file', async (_, { filePath, content }) => {
   if (filePath) {
+    if (isReadOnlyCodeDoc(filePath)) return { error: 'read-only-doc' }
     try {
       fs.writeFileSync(filePath, content, 'utf8')
       addRecent(filePath)
@@ -499,10 +535,10 @@ ipcMain.handle('save-file', async (_, { filePath, content }) => {
       return { error: String(e.message) }
     }
   }
-  return saveAsDialog(content)
+  return saveAsDialog(content, { title: '保存' })
 })
 
-ipcMain.handle('save-file-as', async (_, { content }) => saveAsDialog(content))
+ipcMain.handle('save-file-as', async (_, { content }) => saveAsDialog(content, { title: '另存为' }))
 
 ipcMain.handle('new-file', async (_, { hasChanges }) => {
   if (!hasChanges) return { action: 'discard' }
@@ -733,7 +769,7 @@ ipcMain.handle('workspace-list-dir', (_, relPath) => {
     const entryRel = safe ? `${safe}/${name}` : name
     if (st.isDirectory()) {
       entries.push({ name, relPath: entryRel.replace(/\\/g, '/'), isDirectory: true })
-    } else if (st.isFile() && allowedExt(full)) {
+    } else if (st.isFile() && allowedOpenExt(full)) {
       entries.push({ name, relPath: entryRel.replace(/\\/g, '/'), isDirectory: false })
     }
   }
@@ -835,11 +871,11 @@ ipcMain.handle('workspace-read-file', (_, relPath) => {
   const abs = absInWorkspace(relPath)
   if (!abs) return { error: 'invalid-path' }
   if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return { error: 'not-file' }
-  if (!allowedExt(abs)) return { error: 'unsupported' }
+  if (!allowedOpenExt(abs)) return { error: 'unsupported' }
   try {
     const content = fs.readFileSync(abs, 'utf8')
     addRecent(abs)
-    return { content, filePath: abs }
+    return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
   } catch (e) {
     return { error: String(e.message) }
   }

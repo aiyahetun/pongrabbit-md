@@ -24,6 +24,27 @@ const findCount  = $('find-count')
 
 // ── State ────────────────────────────────────────────────────
 let cfg={}, currentFile=null, isModified=false
+/** 代码/配置类文档只读打开（与 main.js CODE_DOC_READONLY_EXT 保持同步） */
+const READONLY_CODE_EXTS = new Set([
+  '.json', '.jsonc', '.json5',
+  '.yaml', '.yml',
+  '.xml', '.xsl', '.xslt',
+  '.html', '.htm', '.xhtml',
+  '.css', '.scss', '.sass', '.less',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts', '.vue',
+  '.mdx',
+  '.py', '.pyw', '.pyi', '.rb', '.php', '.phtml',
+  '.java', '.kt', '.kts', '.gradle',
+  '.c', '.h', '.cpp', '.cxx', '.cc', '.hpp', '.hh', '.hxx',
+  '.cs', '.fs', '.fsx', '.vb',
+  '.go', '.rs', '.swift', '.dart', '.lua', '.r',
+  '.sql',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  '.toml', '.ini', '.cfg', '.conf', '.config', '.properties',
+  '.env', '.editorconfig', '.gitattributes', '.gitmodules',
+  '.svg', '.plist', '.log'
+])
+let readOnlyDoc = false
 let editMode='wysiwyg'  // wysiwyg | markdown | preview | split
 let _lastSrc='wysiwyg' // last edited source
 let renderTimer=null
@@ -64,6 +85,7 @@ async function init() {
   setupRichEditor()
   setupMdToolbar()
   setupTopActions()
+  setupStatusBar()
   setupFindBar()
   setupResizer()
   setupPanels()
@@ -92,17 +114,63 @@ async function openFileFromPath(filePath) {
   if (!filePath) return
   const r = await window.mobiAPI.openFileByPath(filePath)
   if (!r || r.error) return
-  mdEditor.value = r.content
-  richEditor.innerHTML = md2html(r.content)
-  _lastSrc = 'wysiwyg'
-  currentFile = r.filePath
-  setModified(false)
-  setTitle(bn(r.filePath))
-  setMode('wysiwyg')
-  renderPreview()
-  updateStatus()
+  applyOpenedDocument(r)
   await loadRecentFiles()
   await refreshWorkspaceTree()
+}
+
+function fileExtLower (p) {
+  const n = (p || '').replace(/\\/g, '/').split('/').pop() || ''
+  const d = n.lastIndexOf('.')
+  return d >= 0 ? n.slice(d).toLowerCase() : ''
+}
+
+function isReadOnlyCodePath (p) {
+  return READONLY_CODE_EXTS.has(fileExtLower(p))
+}
+
+function inferReadOnlyFromOpen (r) {
+  if (r && typeof r.readOnly === 'boolean') return r.readOnly
+  return !!(r && r.filePath && isReadOnlyCodePath(r.filePath))
+}
+
+function syncReadOnlyUi () {
+  body.classList.toggle('doc-readonly', readOnlyDoc)
+  mdEditor.readOnly = readOnlyDoc
+  richEditor.contentEditable = readOnlyDoc ? 'false' : 'true'
+  const saveBtn = $('btn-save')
+  if (saveBtn) saveBtn.disabled = readOnlyDoc
+  ;['btn-export-pdf', 'btn-export-html', 'btn-export-xhs-short', 'btn-export-xhs-long'].forEach(id => {
+    const el = $(id)
+    if (el) el.disabled = readOnlyDoc
+  })
+  const rep1 = $('find-replace-one')
+  const repA = $('find-replace-all')
+  if (rep1) rep1.disabled = readOnlyDoc
+  if (repA) repA.disabled = readOnlyDoc
+  const roTag = $('status-readonly-tag')
+  if (roTag) roTag.hidden = !readOnlyDoc
+}
+
+/** 载入磁盘文档（Markdown 或可只读打开的代码/配置） */
+function applyOpenedDocument (r) {
+  if (!r || !r.filePath) return
+  mdEditor.value = r.content
+  richEditor.innerHTML = md2html(r.content)
+  currentFile = r.filePath
+  readOnlyDoc = inferReadOnlyFromOpen(r)
+  syncReadOnlyUi()
+  setModified(false)
+  setTitle(bn(r.filePath) + (readOnlyDoc ? ' · 只读' : ''))
+  if (readOnlyDoc) {
+    _lastSrc = 'md'
+    setMode('markdown')
+  } else {
+    _lastSrc = 'wysiwyg'
+    setMode('wysiwyg')
+  }
+  renderPreview()
+  updateStatus()
 }
 
 // ── Config ───────────────────────────────────────────────────
@@ -357,6 +425,7 @@ function hide(el){if(el)el.style.display='none'}
 function showFlex(el){if(el)el.style.display='flex'}
 
 function setMode(mode) {
+  if (readOnlyDoc && mode !== 'markdown') mode = 'markdown'
   editMode=mode
   ;['wysiwyg','markdown','preview','split'].forEach(m=>
     $('tab-'+m).classList.toggle('active',m===mode)
@@ -519,6 +588,7 @@ function setupMdToolbar(){
 }
 
 function handleMdEnter(e){
+  if(readOnlyDoc)return
   const pos=mdEditor.selectionStart,v=mdEditor.value
   const ls=v.lastIndexOf('\n',pos-1)+1,line=v.substring(ls,pos)
   const tM=line.match(/^(\s*[-*+] )\[[ xX]\] (.*)/)
@@ -536,6 +606,8 @@ function setupTopActions(){
   $('btn-new').onclick=newFile
   $('btn-open').onclick=openFile
   $('btn-save').onclick=saveFile
+  const bsa = $('btn-save-as')
+  if (bsa) bsa.onclick = () => { void saveFileAs() }
   $('btn-export-pdf').onclick=exportPdf
   $('btn-export-html').onclick=exportHtml
   $('btn-export-xhs-short').onclick=()=>{void exportXhsShort()}
@@ -550,6 +622,31 @@ function setupTopActions(){
   $('btn-close').onclick=()=>window.mobiAPI.winClose()
 }
 
+function setupStatusBar () {
+  const btn = $('btn-copy-doc-path')
+  if (!btn) return
+  btn.onclick = async () => {
+    if (!currentFile) return
+    const label = btn.textContent
+    try {
+      await navigator.clipboard.writeText(currentFile)
+      btn.textContent = '已复制'
+      setTimeout(() => { btn.textContent = label }, 1400)
+    } catch (_) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = currentFile
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        btn.textContent = '已复制'
+        setTimeout(() => { btn.textContent = label }, 1400)
+      } catch (__) {}
+    }
+  }
+}
+
 // ════ 文件操作 ══════════════════════════════════════════════
 function getCurrentMd(){
   if(_lastSrc==='md'||editMode==='markdown')return mdEditor.value
@@ -558,23 +655,39 @@ function getCurrentMd(){
 async function newFile(){
   const r=await window.mobiAPI.newFile({hasChanges:isModified})
   if(r.action==='save')await saveFile()
-  if(r.action!=='cancel'){richEditor.innerHTML='';mdEditor.value='';currentFile=null;setModified(false);setTitle('无题文档');updateStatus()}
+  if(r.action!=='cancel'){
+    richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
+    setModified(false);setTitle('无题文档');updateStatus()
+  }
 }
 async function openFile(){
-  const r=await window.mobiAPI.openFile();if(!r||r.error)return
-  mdEditor.value=r.content
-  richEditor.innerHTML=md2html(r.content)
-  _lastSrc='wysiwyg'
-  currentFile=r.filePath;setModified(false);setTitle(bn(r.filePath))
-  renderPreview();updateStatus();await loadRecentFiles();await refreshWorkspaceTree()
+  const r=await window.mobiAPI.openFile()
+  if(!r)return
+  if(r.error){alert(r.error==='unsupported'?'不支持的文件类型。':'无法打开文件。');return}
+  applyOpenedDocument(r)
+  await loadRecentFiles();await refreshWorkspaceTree()
 }
 async function saveFile(){
+  if(readOnlyDoc){
+    alert('当前为只读代码/配置文件。请使用工具栏「另存为」保存到新位置（例如 .md）。')
+    return
+  }
   const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
+  if(r&&r.error==='read-only-doc'){alert('无法覆盖保存该类型文件。请使用「另存为」。');return}
   if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles();await refreshWorkspaceTree()}
 }
 async function saveFileAs(){
   const r=await window.mobiAPI.saveFileAs({content:getCurrentMd()})
-  if(r&&!r.error){currentFile=r;setModified(false);setTitle(bn(r));await loadRecentFiles();await refreshWorkspaceTree()}
+  if(r&&!r.error){
+    currentFile=r
+    readOnlyDoc=isReadOnlyCodePath(r)
+    syncReadOnlyUi()
+    setModified(false)
+    setTitle(bn(r)+(readOnlyDoc?' · 只读':''))
+    if(readOnlyDoc){_lastSrc='md';setMode('markdown')}
+    await loadRecentFiles();await refreshWorkspaceTree()
+    updateStatus()
+  }
 }
 async function exportHtml(){
   await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
@@ -583,7 +696,10 @@ async function exportPdf(){
   if(window.mobiAPIPdf)await window.mobiAPIPdf.exportPdf({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
 }
 
-function setModified(v){isModified=v;$('file-modified').style.display=v?'':'none'}
+function setModified(v){
+  if(readOnlyDoc&&v)return
+  isModified=v;$('file-modified').style.display=v?'':'none'
+}
 function setTitle(n){$('file-name').textContent=n}
 function bn(p){return p.replace(/\\/g,'/').split('/').pop()}
 function updateStatus(){
@@ -593,7 +709,18 @@ function updateStatus(){
   $('status-words').textContent='字数 '+words
   $('status-chars').textContent='字符 '+text.length
   $('status-lines').textContent='行 '+text.split('\n').length
-  $('status-file').textContent=currentFile?bn(currentFile):'未保存'
+  const pathEl=$('status-path'), wrap=$('status-path-wrap'), copyBtn=$('btn-copy-doc-path')
+  if(pathEl){
+    if(currentFile){
+      pathEl.textContent=currentFile.replace(/\\/g,'/')
+      if(wrap)wrap.title=currentFile
+      if(copyBtn)copyBtn.disabled=false
+    }else{
+      pathEl.textContent='未保存文档'
+      if(wrap)wrap.title=''
+      if(copyBtn)copyBtn.disabled=true
+    }
+  }
 }
 
 // ════ 预览渲染 ══════════════════════════════════════════════
@@ -681,12 +808,14 @@ function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(
 
 // ════ MD 格式辅助 ════════════════════════════════════════════
 function insertMd(txt){
+  if(readOnlyDoc)return
   const s=mdEditor.selectionStart,e2=mdEditor.selectionEnd
   mdEditor.value=mdEditor.value.substring(0,s)+txt+mdEditor.value.substring(e2)
   mdEditor.selectionStart=mdEditor.selectionEnd=s+txt.length
   mdEditor.focus();setModified(true);scheduleRender()
 }
 function wrapMd(b,a){
+  if(readOnlyDoc)return
   const s=mdEditor.selectionStart,e2=mdEditor.selectionEnd,sel=mdEditor.value.substring(s,e2)
   mdEditor.value=mdEditor.value.substring(0,s)+b+sel+a+mdEditor.value.substring(e2)
   if(sel){mdEditor.selectionStart=s+b.length;mdEditor.selectionEnd=e2+b.length}
@@ -694,6 +823,7 @@ function wrapMd(b,a){
   mdEditor.focus();setModified(true);scheduleRender()
 }
 function prefixMd(prefix){
+  if(readOnlyDoc)return
   const pos=mdEditor.selectionStart,v=mdEditor.value
   const ls=v.lastIndexOf('\n',pos-1)+1,le=v.indexOf('\n',pos),end=le===-1?v.length:le
   const line=v.substring(ls,end)
@@ -853,12 +983,14 @@ function findNav(d){
   if(editMode==='markdown')mdEditor.setSelectionRange(findMatches[findIdx],findMatches[findIdx]+findInput.value.length)
 }
 function replaceOne(){
+  if(readOnlyDoc)return
   if(!findMatches.length)return
   const i=findMatches[findIdx]
   mdEditor.value=mdEditor.value.substring(0,i)+replaceInput.value+mdEditor.value.substring(i+findInput.value.length)
   setModified(true);scheduleRender();doFind()
 }
 function replaceAll(){
+  if(readOnlyDoc)return
   if(!findInput.value)return
   mdEditor.value=mdEditor.value.replace(new RegExp(escRe(findInput.value),'g'),replaceInput.value)
   setModified(true);scheduleRender();doFind()
@@ -946,8 +1078,7 @@ async function loadRecentFiles(){
         if(resp.action==='save')await saveFile()
       }
       const r=await window.mobiAPI.readFile(f);if(!r||r.error)return
-      mdEditor.value=r.content;richEditor.innerHTML=md2html(r.content);_lastSrc='wysiwyg'
-      currentFile=r.filePath;setModified(false);setTitle(bn(f));renderPreview();updateStatus()
+      applyOpenedDocument({ content: r.content, filePath: r.filePath || f, readOnly: isReadOnlyCodePath(f) })
       await refreshWorkspaceTree()
     }
     list.appendChild(el)
@@ -1266,15 +1397,7 @@ async function openWorkspaceRelFile(relPath){
   }
   const r=await window.mobiAPI.workspaceReadFile(relPath)
   if(!r||r.error)return
-  mdEditor.value=r.content
-  richEditor.innerHTML=md2html(r.content)
-  _lastSrc='wysiwyg'
-  currentFile=r.filePath
-  setModified(false)
-  setTitle(bn(r.filePath))
-  setMode('wysiwyg')
-  renderPreview()
-  updateStatus()
+  applyOpenedDocument(r)
   await loadRecentFiles()
   await refreshWorkspaceTree()
 }
@@ -1334,6 +1457,7 @@ function setupWorkspaceSidebar(){
 }
 
 async function insertMarkdownImageAtCursor(){
+  if(readOnlyDoc)return
   const r=await window.mobiAPI.importMarkdownImage({mdFilePath:currentFile||''})
   if(r.cancelled)return
   if(r.error){alert(r.error);return}
