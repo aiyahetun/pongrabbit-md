@@ -694,7 +694,14 @@ async function exportHtml(){
   await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
 }
 async function exportPdf(){
-  if(window.mobiAPIPdf)await window.mobiAPIPdf.exportPdf({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
+  if(window.mobiAPIPdf) {
+    await window.mobiAPIPdf.exportPdf({
+      html: previewEl.innerHTML,
+      title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : '无题',
+      theme: cfg.theme,
+      fontFamily: cfg.fontFamily || 'system'
+    })
+  }
 }
 
 function setModified(v){
@@ -1146,11 +1153,26 @@ function xhsFontById (id) {
   return XHS_EXPORT_FONTS.find(f => f.id === id) || XHS_EXPORT_FONTS[1]
 }
 
+/** 导出图「手机阅读」档位：仅离屏 surface 字号倍率，不改编辑器 */
+const XHS_READABILITY_LEVELS = [
+  { id: 'standard', name: '标准', sub: '约 20px 正文，按 ## 拆长文' },
+  { id: 'comfort', name: '舒适', sub: '约 +45%（≈29px），尽量再按 ### 拆段' },
+  { id: 'large', name: '加大', sub: '约 +88%（≈38px），尽量再按 ### 拆段' }
+]
+
+/** 相对导出版心基准正文字号倍率；字号在 buildXhsExportSurface 用 style 写入（html2canvas 对 calc+变量不稳） */
+function xhsReadabilityMul (readability) {
+  if (readability === 'comfort') return 1.45
+  if (readability === 'large') return 1.88
+  return 1
+}
+
 let xhsStyleDialogResolver = null
 function setupXhsStyleDialog () {
   const dlg = $('xhs-style-dialog')
   const grid = $('xhs-style-grid')
   const fgrid = $('xhs-font-grid')
+  const rgrid = $('xhs-readability-grid')
   const close = (value) => {
     dlg.style.display = 'none'
     const cb = xhsStyleDialogResolver
@@ -1163,17 +1185,27 @@ function setupXhsStyleDialog () {
     const sid = sel && sel.dataset.styleId
     const fsel = fgrid.querySelector('.xhs-font-card.selected')
     const fid = fsel && fsel.dataset.fontId
+    const rsel = rgrid && rgrid.querySelector('.xhs-read-card.selected')
+    const rid = (rsel && rsel.dataset.readabilityId) || 'standard'
     if (!sid || !fid) return
     cfg.xhsExportStyle = sid
     cfg.xhsExportFont = fid
-    void window.mobiAPI.saveConfig({ xhsExportStyle: sid, xhsExportFont: fid })
-    close({ styleId: sid, fontId: fid })
+    cfg.xhsExportReadability = rid
+    void window.mobiAPI.saveConfig({ xhsExportStyle: sid, xhsExportFont: fid, xhsExportReadability: rid })
+    close({ styleId: sid, fontId: fid, readability: rid })
   }
   dlg.onclick = e => { if (e.target === dlg) close(null) }
   grid.onclick = e => {
     const card = e.target.closest('.xhs-style-card')
     if (!card || !grid.contains(card)) return
     grid.querySelectorAll('.xhs-style-card').forEach(c => { c.classList.toggle('selected', c === card) })
+  }
+  if (rgrid) {
+    rgrid.onclick = e => {
+      const card = e.target.closest('.xhs-read-card')
+      if (!card || !rgrid.contains(card)) return
+      rgrid.querySelectorAll('.xhs-read-card').forEach(c => { c.classList.toggle('selected', c === card) })
+    }
   }
   fgrid.onclick = e => {
     const card = e.target.closest('.xhs-font-card')
@@ -1194,6 +1226,29 @@ function openXhsStylePicker () {
     const initialFont = (cfg.xhsExportFont && XHS_EXPORT_FONTS.some(f => f.id === cfg.xhsExportFont))
       ? cfg.xhsExportFont
       : 'noto-sans-sc'
+    const initialRead = (cfg.xhsExportReadability && XHS_READABILITY_LEVELS.some(r => r.id === cfg.xhsExportReadability))
+      ? cfg.xhsExportReadability
+      : 'standard'
+    const rgrid = $('xhs-readability-grid')
+    if (rgrid) {
+      rgrid.innerHTML = ''
+      for (const def of XHS_READABILITY_LEVELS) {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'xhs-read-card' + (def.id === initialRead ? ' selected' : '')
+        b.dataset.readabilityId = def.id
+        b.setAttribute('role', 'option')
+        const nm = document.createElement('div')
+        nm.className = 'xhs-read-card-name'
+        nm.textContent = def.name
+        const sub = document.createElement('div')
+        sub.className = 'xhs-read-card-sub'
+        sub.textContent = def.sub
+        b.appendChild(nm)
+        b.appendChild(sub)
+        rgrid.appendChild(b)
+      }
+    }
     grid.innerHTML = ''
     for (const def of XHS_EXPORT_STYLES) {
       const b = document.createElement('button')
@@ -1250,22 +1305,97 @@ const XHS_LAYOUT_H = 1440
 /** 相对版心的像素倍率（固定 2，不再让用户选择） */
 const XHS_EXPORT_SCALE = 2
 const XHS_MAX_CANVAS_H = 32000
+/** 导出版心正文基准 px（仅导出层；舒适/再乘 xhsReadabilityMul） */
+const XHS_EXPORT_BASE_FONT_PX = 20
+
+/** 围栏语言为以下时仍按「代码」保留 pre（html2canvas 对真正代码块另说） */
+const XHS_CODE_FENCE_LANGS = new Set([
+  'js', 'javascript', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'jsx', 'json', 'json5', 'jsonc',
+  'html', 'htm', 'xml', 'css', 'scss', 'sass', 'less',
+  'py', 'python', 'rb', 'php', 'java', 'kt', 'kts', 'go', 'rs', 'rust', 'swift', 'c', 'cpp', 'cxx', 'cc', 'cs', 'fs', 'fsx', 'vb',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'yaml', 'yml', 'toml', 'ini', 'sql', 'mdx', 'vue', 'dockerfile', 'nginx', 'graphql', 'http', 'diff', 'patch', 'wasm', 'r', 'lua', 'dart', 'scala', 'clj', 'ex', 'exs', 'erl', 'haskell', 'hs', 'jl', 'julia', 'matlab', 'pl', 'perl', 'zig', 'v', 'verilog', 'vhdl', 'asm', 'cmake', 'makefile', 'mk', 'gradle', 'properties', 'env', 'gitignore', 'dockerignore'
+])
+/** 围栏语言为以下时强制当正文排版（不用 pre） */
+const XHS_PROSE_FENCE_LANGS = new Set(['text', 'txt', 'plaintext', 'plain', 'markdown', 'md', 'meta', 'none'])
+
+/**
+ * 仅在围栏（```…```）外按「整行匹配 headingRe」切段，避免 ## / ### 切在围栏中间导致 marked 不识别围栏、导出出现字面量反引号。
+ */
+function xhsSplitLinesRespectingFence (md, headingLineRe) {
+  const t = String(md || '').replace(/\r\n/g, '\n')
+  const lines = t.split('\n')
+  let inFence = false
+  const parts = []
+  let buf = []
+  const flushBuf = () => {
+    const s = buf.join('\n').trim()
+    if (s.length) parts.push(s)
+    buf = []
+  }
+  for (const line of lines) {
+    const tr = line.trim()
+    if (tr.startsWith('```') || tr.startsWith('~~~')) {
+      buf.push(line)
+      inFence = !inFence
+      continue
+    }
+    if (!inFence && headingLineRe.test(tr) && buf.length > 0) {
+      flushBuf()
+      buf.push(line)
+      continue
+    }
+    buf.push(line)
+  }
+  flushBuf()
+  return parts
+}
 
 /** 按二级标题(##)拆 Markdown，供超长文导出；无 ## 时返回整篇单段 */
 function splitMdByH2ForXhsExport (md) {
-  const t = String(md || '').replace(/\r\n/g, '\n')
-  let parts = t.split(/(?=^## .+$)/m).map(s => s.trim()).filter(s => s.length > 0)
+  const raw = String(md || '').replace(/\r\n/g, '\n')
+  let parts = xhsSplitLinesRespectingFence(raw, /^## .+$/)
   if (parts.length >= 2 && !/^## .+$/m.test(parts[0])) {
     parts = [parts[0] + '\n\n' + parts[1], ...parts.slice(2)]
   }
-  return parts.length ? parts : [t.trim()].filter(Boolean)
+  return parts.length ? parts : [raw.trim()].filter(s => s.length > 0)
+}
+
+/** 在一段内按 ### 拆（无 ### 则整段返回） */
+function splitChunkByH3 (chunk) {
+  const t = String(chunk || '').replace(/\r\n/g, '\n').trim()
+  if (!t) return []
+  if (!/^### .+$/m.test(t)) return [t]
+  let parts = xhsSplitLinesRespectingFence(t, /^### .+$/)
+  if (parts.length >= 2 && !/^### .+$/m.test(parts[0])) {
+    parts = [parts[0] + '\n\n' + parts[1], ...parts.slice(2)]
+  }
+  return parts.length ? parts : [t]
+}
+
+/**
+ * 导出用 Markdown 段列表：标准档仅按 ##；舒适/加大在 ## 后再尽量按 ### 拆，降低单图高度触顶
+ */
+function splitMdForXhsExport (md, readability) {
+  const h2 = splitMdByH2ForXhsExport(md)
+  if (readability === 'standard') return h2
+  const flat = []
+  for (const p of h2) {
+    const subs = splitChunkByH3(p)
+    if (subs.length <= 1) flat.push(p)
+    else flat.push(...subs)
+  }
+  return flat.length ? flat : h2
 }
 
 /** 与预览一致的 Markdown → HTML（hljs、本地图片路径），不写入预览区 */
 async function mdFragmentToExportableHtml (md) {
   if (!window.marked) throw new Error('marked 未加载')
   window.marked.setOptions({ breaks: true, gfm: true })
-  const src = String(md).replace(/^([ \t]*[-*+] )\[([ xX])\] /gm, (_, b, c) => `${b}<input type="checkbox" ${c !== ' ' ? 'checked' : ''}> `)
+  /* 全角重音符 U+FF40 常被误作反引号，会导致行内 code 不闭合、导出出现字面 ` 或整段被当成 code */
+  const src = String(md || '')
+    .replace(/\uFF40/g, '`')
+    .replace(/^([ \t]*[-*+] )\[([ xX])\] /gm, (_, b, c) => `${b}<input type="checkbox" ${c !== ' ' ? 'checked' : ''}> `)
   const wrap = document.createElement('div')
   wrap.innerHTML = window.marked.parse(src)
   if (window.hljsAPI) {
@@ -1350,6 +1480,56 @@ function normalizeCanvasToTargetWidth (src, fillColor, targetW) {
   return c
 }
 
+function xhsParseHexFill (hex) {
+  if (!hex || typeof hex !== 'string') return { r: 255, g: 255, b: 255 }
+  let h = hex.trim().replace(/^#/, '')
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  if (h.length === 8) h = h.slice(0, 6)
+  if (h.length !== 6) return { r: 255, g: 255, b: 255 }
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16)
+  }
+}
+
+function xhsRgbNear (r, g, b, target, tol = 22) {
+  return Math.abs(r - target.r) <= tol && Math.abs(g - target.g) <= tol && Math.abs(b - target.b) <= tol
+}
+
+/** 分页尾页多为「防裁切」留白时可删；阈值略松以保留右下角签名 */
+function isXhsCanvasPageMostlyBlank (canvas, targetRgb) {
+  const ctx = canvas.getContext('2d')
+  const w = canvas.width
+  const h = canvas.height
+  if (w < 4 || h < 4) return true
+  const stepX = Math.max(6, Math.floor(w / 26))
+  const stepY = Math.max(8, Math.floor(h / 34))
+  let samples = 0
+  let near = 0
+  for (let y = stepY; y < h - 4; y += stepY) {
+    for (let x = stepX; x < w - 4; x += stepX) {
+      try {
+        const d = ctx.getImageData(Math.min(x, w - 1), Math.min(y, h - 1), 1, 1).data
+        samples++
+        if (xhsRgbNear(d[0], d[1], d[2], targetRgb)) near++
+      } catch (_) {
+        samples++
+      }
+    }
+  }
+  return samples > 24 && near / samples >= 0.968
+}
+
+function dropTrailingBlankXhsPages (pages, fillColor) {
+  const rgb = xhsParseHexFill(fillColor)
+  const out = [...pages]
+  while (out.length > 1 && isXhsCanvasPageMostlyBlank(out[out.length - 1], rgb)) {
+    out.pop()
+  }
+  return out
+}
+
 function sliceCanvasToFixedPages (normalizedCanvas, fillColor, pageW, pageH) {
   const W = Math.max(1, Math.round(pageW))
   const H = Math.max(1, Math.round(pageH))
@@ -1371,12 +1551,13 @@ function sliceCanvasToFixedPages (normalizedCanvas, fillColor, pageW, pageH) {
   return pages
 }
 
-/** 右下角小签名（短图每张、长图一张）；描边保证在渐变背景上仍可见 */
+/** 右下角小签名（短图每张、长图一张）；边距加大、字号略增，避免与正文抢位 */
 function stampExportSignature (canvas, dark) {
   const sc = XHS_EXPORT_SCALE
   const text = 'pongrabbit-md'
-  const pad = Math.round(14 * sc)
-  const fs = Math.round(13 * sc)
+  const padR = Math.round(24 * sc)
+  const padB = Math.round(28 * sc)
+  const fs = Math.round(16 * sc)
   const ctx = canvas.getContext('2d')
   ctx.save()
   ctx.font = `600 ${fs}px system-ui,"Segoe UI","Noto Sans SC",sans-serif`
@@ -1384,9 +1565,9 @@ function stampExportSignature (canvas, dark) {
   ctx.textAlign = 'right'
   ctx.lineJoin = 'round'
   ctx.miterLimit = 2
-  const x = canvas.width - pad
-  const y = canvas.height - Math.round(10 * sc)
-  const lw = Math.max(2, Math.round(2.5 * sc))
+  const x = canvas.width - padR
+  const y = canvas.height - padB
+  const lw = Math.max(2, Math.round(2.6 * sc))
   ctx.lineWidth = lw
   if (dark) {
     ctx.strokeStyle = 'rgba(0,0,0,0.55)'
@@ -1404,6 +1585,27 @@ function clearXhsExportHost () {
   const h = $('xhs-export-host')
   if (h) h.innerHTML = ''
 }
+
+// #region agent log
+function dbgXhsAgentLog (location, message, data, hypothesisId) {
+  const payload = {
+    sessionId: '45714f',
+    location,
+    message,
+    data: data || {},
+    timestamp: Date.now(),
+    hypothesisId: hypothesisId || 'none'
+  }
+  fetch('http://127.0.0.1:7278/ingest/3ffc2732-0189-43ea-8955-7dd62494b1c3', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '45714f' },
+    body: JSON.stringify(payload)
+  }).catch(() => {})
+  if (window.mobiAPI && typeof window.mobiAPI.debugSessionLog === 'function') {
+    void window.mobiAPI.debugSessionLog(payload)
+  }
+}
+// #endregion
 
 /**
  * html2canvas 只接收 surface 子树时，head 里 link 的 WebFont 有时不参与测量；得意黑易回退成 Noto。
@@ -1427,6 +1629,10 @@ function injectSmileySansFaceIntoSurface (surface) {
 
 /** 导出前去掉当前文档绝对路径、file:// 链接等，避免出现在截图里 */
 function stripDocPathFromXhsSurface (surface) {
+  // #region agent log
+  let _xhsStripLinkTouched = 0
+  let _xhsStripTextNodes = 0
+  // #endregion
   const doc = currentFile ? String(currentFile) : ''
   const variants = []
   if (doc) {
@@ -1442,7 +1648,12 @@ function stripDocPathFromXhsSurface (surface) {
     const looksPath = /^file:/i.test(txt) ||
       /^[a-zA-Z]:[/\\]/.test(txt) ||
       uniq.some(v => v && txt.includes(v))
-    if (!txt || looksPath) a.textContent = '本地链接'
+    if (!txt || looksPath) {
+      a.textContent = '本地链接'
+      // #region agent log
+      _xhsStripLinkTouched++
+      // #endregion
+    }
   }
 
   const tw = document.createTreeWalker(surface, NodeFilter.SHOW_TEXT, null)
@@ -1456,7 +1667,12 @@ function stripDocPathFromXhsSurface (surface) {
     for (const v of uniq) {
       if (v && next.includes(v)) next = next.split(v).join('')
     }
-    if (next !== s) tn.nodeValue = next.replace(/[ \t]{2,}/g, ' ')
+    if (next !== s) {
+      tn.nodeValue = next.replace(/[ \t]{2,}/g, ' ')
+      // #region agent log
+      _xhsStripTextNodes++
+      // #endregion
+    }
   }
 
   for (const img of surface.querySelectorAll('img[title], img[alt]')) {
@@ -1468,12 +1684,237 @@ function stripDocPathFromXhsSurface (surface) {
       }
     }
   }
+  // #region agent log
+  dbgXhsAgentLog('app.js:stripDocPathFromXhsSurface', 'path strip summary', {
+    docLen: doc.length,
+    variantCount: uniq.length,
+    linkLocalizeCount: _xhsStripLinkTouched,
+    textNodeStripCount: _xhsStripTextNodes
+  }, 'H3')
+  // #endregion
 }
 
-async function waitXhsExportFonts (fontId) {
+const XHS_RELAX_REJECT_TAGS = new Set(['SCRIPT', 'STYLE', 'TEXTAREA'])
+
+/**
+ * 整段只有一对反引号时 marked 会生成 <p><code>很长…</code></p>；行内 code + 多行折行在 html2canvas 下背景与字易错位。
+ * 独占 code：够长、含换行、或已折成多行矩形时升为块级，导出 CSS 与 fenced 接近并避免灰底压行。
+ */
+function xhsUpgradeLongParagraphCode (surface) {
+  const MIN_LEN = 20
+  const sel = 'p > code:only-child, li > code:only-child, blockquote p > code:only-child'
+  // #region agent log
+  let _xhsLongCodeUpgraded = 0
+  let _xhsLongCodeByMultiline = 0
+  const list = surface.querySelectorAll(sel)
+  const _xhsLongCodeCandidates = list.length
+  // #endregion
+  for (const el of list) {
+    const raw = el.textContent || ''
+    const collapsed = raw.replace(/\s+/g, ' ').trim()
+    void el.offsetHeight
+    const multiLineVisual = el.getClientRects().length > 1
+    const hasRawNewline = /[\r\n]/.test(raw)
+    const longEnough = collapsed.length >= MIN_LEN
+    if (!longEnough && (multiLineVisual || hasRawNewline)) {
+      // #region agent log
+      _xhsLongCodeByMultiline++
+      // #endregion
+    }
+    if (longEnough || multiLineVisual || hasRawNewline) {
+      el.classList.add('xhs-export-long-code')
+      // #region agent log
+      _xhsLongCodeUpgraded++
+      // #endregion
+    }
+  }
+  // #region agent log
+  dbgXhsAgentLog('app.js:xhsUpgradeLongParagraphCode', 'long code upgrade', {
+    upgraded: _xhsLongCodeUpgraded,
+    candidates: _xhsLongCodeCandidates,
+    byMultilineOrNewline: _xhsLongCodeByMultiline
+  }, 'H2')
+  // #endregion
+}
+
+/**
+ * 无语言或「正文类」语言的 ``` 围栏在 DOM 里是 pre+code；html2canvas 对 pre 内多行中文常算错行高→叠字。
+ * 导出时改为多块级 div（每行一行盒），外观仍用与 pre 相同的底与边距；显式标注语言的代码块保留 pre。
+ */
+function xhsKeepFencedBlockAsRealPre (codeEl) {
+  const cls = String(codeEl.className || '')
+  const m = cls.match(/language-([\w-]+)/)
+  const lang = m ? m[1].toLowerCase() : ''
+  const raw = (codeEl.textContent || '').replace(/\r\n/g, '\n')
+  const text = raw.replace(/^\n+/, '').replace(/\n+$/, '')
+  const lines = text.length ? text.split('\n') : ['']
+  if (XHS_PROSE_FENCE_LANGS.has(lang)) return false
+  if (lang && XHS_CODE_FENCE_LANGS.has(lang)) return true
+  /* 未列入的语言：多行或长段中文更像「误用围栏」→ 导出不用 pre，避免 html2canvas 叠字 */
+  if (lang && !XHS_CODE_FENCE_LANGS.has(lang)) {
+    if (lines.length >= 2) return false
+    if (lines.length === 1 && text.length > 220 && /[\u4e00-\u9fff]/.test(text)) return false
+    return true
+  }
+  if (!lang && lines.length >= 2) return false
+  return true
+}
+
+function xhsFlattenProseCodeFencesForCanvas (surface) {
+  for (const pre of Array.from(surface.querySelectorAll('pre'))) {
+    const code = pre.querySelector(':scope > code')
+    if (!code) continue
+    if (xhsKeepFencedBlockAsRealPre(code)) continue
+    const raw = (code.textContent || '').replace(/\r\n/g, '\n')
+    const text = raw.replace(/^\n+/, '').replace(/\n+$/, '')
+    const lines = text.length ? text.split('\n') : ['']
+    const box = document.createElement('div')
+    box.className = 'xhs-export-fenced-plain'
+    for (let i = 0; i < lines.length; i++) {
+      const row = document.createElement('div')
+      row.className = 'xhs-export-fence-line'
+      row.textContent = lines[i]
+      box.appendChild(row)
+    }
+    pre.parentNode.replaceChild(box, pre)
+  }
+}
+
+/**
+ * html2canvas 对行内 code 的 background 常错误铺成整行，看起来像「整段进了代码块」。
+ * 用 inline-block 外壳承载灰底，code 仅保留字体与内边距（与预览语义一致：只有反引号内是 code）。
+ */
+function xhsWrapInlineCodeForCanvas (surface) {
+  const codes = Array.from(surface.querySelectorAll('code'))
+  for (const code of codes) {
+    if (code.closest('pre')) continue
+    if (code.classList.contains('xhs-export-long-code')) continue
+    const par = code.parentElement
+    if (!par || par.classList.contains('xhs-inline-code-chip')) continue
+    const span = document.createElement('span')
+    span.className = 'xhs-inline-code-chip'
+    par.insertBefore(span, code)
+    span.appendChild(code)
+  }
+}
+
+/**
+ * 部分粘贴/解析结果里换行留在文本节点的 \\n，未变成 br；先规范成 br 再拆分。
+ */
+function xhsNormalizeNewlinesToBrInFlow (surface) {
+  const seen = new Set()
+  for (const el of surface.querySelectorAll('p, li, blockquote p')) {
+    if (seen.has(el)) continue
+    seen.add(el)
+    if (el.closest('pre') || el.querySelector('pre, table, ul, ol')) continue
+    for (const tn of Array.from(el.childNodes)) {
+      if (tn.nodeType !== 3) continue
+      const v = tn.nodeValue
+      if (!v || !/\n/.test(v)) continue
+      const parts = v.split(/\n/)
+      const frag = document.createDocumentFragment()
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i] !== '') frag.appendChild(document.createTextNode(parts[i]))
+        if (i < parts.length - 1) frag.appendChild(document.createElement('br'))
+      }
+      tn.parentNode.replaceChild(frag, tn)
+    }
+  }
+}
+
+/**
+ * marked + breaks:true 常把「多行一条」渲成单个 p/li 里多个 br。
+ * html2canvas 对 br 换行的行盒高度易算错→整段字叠在一起；导出前拆成多个块级段落（每段独立行盒）。
+ */
+function xhsSplitFlowAtLineBreaks (surface) {
+  const seen = new Set()
+  for (const p of surface.querySelectorAll('p, li, blockquote p')) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    if (p.closest('pre') || p.querySelector('pre, table, ul, ol')) continue
+    if (!p.getElementsByTagName('br').length) continue
+    const parent = p.parentNode
+    if (!parent) continue
+    const chunks = []
+    let cur = []
+    for (const n of Array.from(p.childNodes)) {
+      if (n.nodeType === 1 && String(n.nodeName).toUpperCase() === 'BR') {
+        chunks.push(cur)
+        cur = []
+      } else {
+        cur.push(n)
+      }
+    }
+    chunks.push(cur)
+    const nonempty = chunks.filter(ch => ch.length > 0)
+    if (nonempty.length < 2) continue
+    const ref = p.nextSibling
+    const tag = String(p.tagName).toLowerCase()
+    parent.removeChild(p)
+    for (const ch of nonempty) {
+      const el = document.createElement(tag)
+      for (const n of ch) el.appendChild(n)
+      parent.insertBefore(el, ref)
+    }
+  }
+}
+
+/** 在导出 DOM 里为标点两侧加薄空格，减轻 html2canvas 叠字（跳过 pre 与行内 code：改 code 内字宽会破坏等宽与背景测量） */
+function xhsRelaxPunctuationInSurface (surface) {
+  const acceptNode = (node) => {
+    const root = node.parentElement
+    if (!root) return NodeFilter.FILTER_REJECT
+    if (root.closest('pre')) return NodeFilter.FILTER_REJECT
+    if (root.closest('code')) return NodeFilter.FILTER_REJECT
+    let el = root
+    while (el && el !== surface) {
+      if (XHS_RELAX_REJECT_TAGS.has(el.tagName)) return NodeFilter.FILTER_REJECT
+      el = el.parentElement
+    }
+    return NodeFilter.FILTER_ACCEPT
+  }
+  const tw = document.createTreeWalker(surface, NodeFilter.SHOW_TEXT, { acceptNode })
+  let tn
+  while ((tn = tw.nextNode())) {
+    const s = tn.nodeValue
+    if (!s || !/[-－/\u2014\u00b7\u30fb\uFF5E~\uFF1A\u2022\u25cf●\u300c\u300d\u3010\u3011\u300a\u300b（）]/.test(s)) continue
+    let next = s
+    /* 中文词组之间的斜杠（如 振动 / 感知） */
+    next = next.replace(/([\u4e00-\u9fff])\s*\/\s*([\u4e00-\u9fff])/g, '$1\u2005/\u2005$2')
+    /* 直角引号「」紧邻出现时（如「A」「B」）html2canvas 易挤叠 */
+    next = next.replace(/」\s*「/g, '」\u2005「')
+    /* 全角冒号后紧跟汉字、数字或 CJK 标点（含「《，如 建议措辞：「）此前未覆盖 U+3000 段，易与「叠字 */
+    next = next.replace(/：(?!\u200a)(?=[\u4e00-\u9fff0-9\u3000-\u303f])/g, '：\u200a')
+    /* 标题/日志里「日志 · 批次」类：间隔号两侧略疏 */
+    next = next.replace(/([\u4e00-\u9fffA-Za-z0-9）】」])\s*·\s*([\u4e00-\u9fffA-Za-z0-9（【「])/g, '$1\u2005·\u2005$2')
+    next = next.replace(/([^\s\u00b7])\u00b7([^\s\u00b7])/g, '$1\u2005\u00b7\u2005$2')
+    next = next.replace(/([^\s\u30fb])\u30fb([^\s\u30fb])/g, '$1\u2005\u30fb\u2005$2')
+    /* 状态行里的 ● 与前后标点 */
+    next = next.replace(/([：，、；])\s*●/g, '$1\u2005●')
+    next = next.replace(/●\s*([，、。；])/g, '●\u2005$1')
+    next = next.replace(/([\u4e00-\u9fff])\s*●\s*([\u4e00-\u9fff])/g, '$1\u2005●\u2005$2')
+    next = next.replace(/([\u4e00-\u9fff\u3000-\u303f])-([A-Za-z0-9])/g, '$1\u200a-$2')
+    next = next.replace(/([A-Za-z0-9])-([\u4e00-\u9fff])/g, '$1-\u200a$2')
+    next = next.replace(/([\u4e00-\u9fff])-([\u4e00-\u9fff])/g, '$1\u200a-$2')
+    next = next.replace(/([\u4e00-\u9fff\u3000-\u303f])－([A-Za-z0-9\u4e00-\u9fff])/g, '$1\u200a－$2')
+    next = next.replace(/([A-Za-z0-9])－([\u4e00-\u9fff])/g, '$1－\u200a$2')
+    next = next.replace(/——/g, '\u2014\u2005\u2014')
+    next = next.replace(/([\u4e00-\u9fff])\u2014/g, '$1\u2005\u2014')
+    next = next.replace(/\u2014([\u4e00-\u9fff])/g, '\u2014\u2005$1')
+    next = next.replace(/(\d)\uFF5E(\d)/g, '$1\u200a\uFF5E\u200a$2')
+    next = next.replace(/(\d)~(\d)/g, '$1\u200a~\u200a$2')
+    /* 全角括号与前后汉字（如 草案（第三稿）） */
+    next = next.replace(/([\u4e00-\u9fff])（/g, '$1\u200a（')
+    next = next.replace(/）(?=[\u4e00-\u9fff\u300c\u300d])/g, '）\u200a')
+    if (next !== s) tn.nodeValue = next
+  }
+}
+
+async function waitXhsExportFonts (fontId, readMul = 1) {
   if (fontId !== 'smiley-sans') return
   const sc = XHS_EXPORT_SCALE
-  const px = n => Math.max(8, Math.round(n * sc)) + 'px'
+  const m = Math.max(0.8, Math.min(2.05, Number(readMul) || 1))
+  const px = n => Math.max(8, Math.round(n * sc * m)) + 'px'
   try {
     await document.fonts.load('400 ' + px(17) + ' "smiley-sans"')
     await document.fonts.load('400 ' + px(28) + ' "smiley-sans"')
@@ -1488,8 +1929,9 @@ async function waitXhsExportFonts (fontId) {
 
 /**
  * @param {string|null} mdChunk 若传入则仅从该段 Markdown 构建（不刷新整篇预览），用于按 ## 拆段导出
+ * @param {string} [readability='standard'] 导出图手机阅读字号档位 standard|comfort|large
  */
-async function buildXhsExportSurface (styleId, fontId, mdChunk = null) {
+async function buildXhsExportSurface (styleId, fontId, mdChunk = null, readability = 'standard') {
   if (mdChunk == null) {
     await renderPreview()
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
@@ -1497,6 +1939,8 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null) {
   if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载，请检查 node_modules 与 index.html 脚本引用')
   const st = xhsStyleById(styleId)
   const fd = xhsFontById(fontId)
+  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
+  const readMul = xhsReadabilityMul(read)
   let host = $('xhs-export-host')
   if (!host) {
     host = document.createElement('div')
@@ -1505,10 +1949,24 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null) {
   }
   host.innerHTML = ''
   const surface = document.createElement('div')
-  surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id
+  surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id + ' xhs-read-' + read
   if (st.dark) surface.classList.add('xhs-export--dark')
-  surface.innerHTML = mdChunk != null ? await mdFragmentToExportableHtml(mdChunk) : previewEl.innerHTML
+  surface.innerHTML = await mdFragmentToExportableHtml(mdChunk != null ? mdChunk : getCurrentMd())
+  {
+    const fz = Math.round(10 * XHS_EXPORT_BASE_FONT_PX * xhsReadabilityMul(read)) / 10
+    surface.style.fontSize = fz + 'px'
+    /* 与 #xhs-export-host .xhs-export-surface 一致；长文/表格混排时略大行高减轻 html2canvas 叠字 */
+    surface.style.lineHeight = '2.12'
+    /* 过大会撑出大量空白分页；略大于行高即可防末行裁切 */
+    surface.style.paddingBottom = Math.min(150, Math.round(48 + fz * 2.45)) + 'px'
+  }
+  xhsFlattenProseCodeFencesForCanvas(surface)
   stripDocPathFromXhsSurface(surface)
+  xhsNormalizeNewlinesToBrInFlow(surface)
+  xhsSplitFlowAtLineBreaks(surface)
+  xhsRelaxPunctuationInSurface(surface)
+  xhsUpgradeLongParagraphCode(surface)
+  xhsWrapInlineCodeForCanvas(surface)
   if (fd.id === 'smiley-sans') injectSmileySansFaceIntoSurface(surface)
   host.appendChild(surface)
   for (const img of surface.querySelectorAll('img')) {
@@ -1535,12 +1993,92 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null) {
   }
   await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
   await new Promise(r => setTimeout(r, 120))
-  await waitXhsExportFonts(fd.id)
+  await waitXhsExportFonts(fd.id, readMul)
   try {
     await document.fonts.ready
   } catch (_) {}
   await new Promise(r => setTimeout(r, 80))
+  // #region agent log
+  const _mdForExport = mdChunk != null ? String(mdChunk) : String(getCurrentMd() || '')
+  const _inlineOnlyCode = surface.querySelectorAll('p > code:only-child, li > code:only-child').length
+  let _paraFenceLeak = 0
+  for (const p of surface.querySelectorAll('p')) {
+    if (/^\s*```/.test(p.textContent || '')) _paraFenceLeak++
+  }
+  dbgXhsAgentLog('app.js:buildXhsExportSurface', 'pre-capture layout', {
+    mdChunkWasNull: mdChunk == null,
+    mdLen: _mdForExport.length,
+    readability: read,
+    fontId: fd.id,
+    scrollHeight: surface.scrollHeight,
+    offsetHeight: surface.offsetHeight,
+    clientHeight: surface.clientHeight,
+    preCount: surface.querySelectorAll('pre').length,
+    codeTagCount: surface.querySelectorAll('code').length,
+    longCodeClassCount: surface.querySelectorAll('code.xhs-export-long-code').length,
+    inlineOnlyCodeCandidates: _inlineOnlyCode,
+    bqCount: surface.querySelectorAll('blockquote').length,
+    bqCodeCount: surface.querySelectorAll('blockquote code').length,
+    paraLooksLikeBrokenFence: _paraFenceLeak,
+    fontsStatus: (typeof document !== 'undefined' && document.fonts && document.fonts.status) ? document.fonts.status : 'n/a'
+  }, 'H1,H4,H5,H12,H14')
+  // #endregion
   return surface
+}
+
+/** 截图前强制排版，避免 html2canvas 少算高度；overflow 避免裁切 */
+async function captureXhsSurfaceToCanvas (surface, canvasBg) {
+  const host = surface.parentElement && surface.parentElement.id === 'xhs-export-host'
+    ? surface.parentElement
+    : $('xhs-export-host')
+  let hostMoved = false
+  if (host) {
+    host.style.setProperty('left', '0px')
+    host.style.setProperty('top', '0px')
+    hostMoved = true
+  }
+  surface.style.overflow = 'visible'
+  void surface.offsetHeight
+  const shBefore = surface.scrollHeight
+  void surface.scrollHeight
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const capW = Math.max(1, Math.ceil(surface.offsetWidth || surface.getBoundingClientRect().width))
+  const capH = Math.max(1, Math.ceil(Math.max(surface.scrollHeight, shBefore)))
+  let cv
+  try {
+    cv = await window.html2canvas(surface, {
+      backgroundColor: canvasBg,
+      scale: XHS_EXPORT_SCALE,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      /* 默认 window 为视口尺寸时，克隆 iframe 过矮会导致长文排版测量偏差→叠字；与版心同宽高 */
+      width: capW,
+      height: capH,
+      windowWidth: capW,
+      windowHeight: capH,
+      scrollX: 0,
+      scrollY: 0
+      /* 勿开 foreignObjectRendering：Electron/Chromium 下常整页空白，仅余签名 */
+    })
+  } finally {
+    if (hostMoved && host) {
+      host.style.removeProperty('left')
+      host.style.removeProperty('top')
+    }
+  }
+  // #region agent log
+  const expectH = Math.round(shBefore * XHS_EXPORT_SCALE)
+  dbgXhsAgentLog('app.js:captureXhsSurfaceToCanvas', 'canvas vs scrollHeight', {
+    scrollHeightBefore: shBefore,
+    canvasWidth: cv.width,
+    canvasHeight: cv.height,
+    scale: XHS_EXPORT_SCALE,
+    expectCanvasHeight: expectH,
+    heightShortfallPx: expectH - cv.height
+  }, 'H1')
+  // #endregion
+  return cv
 }
 
 async function exportXhsShort () {
@@ -1550,34 +2088,31 @@ async function exportXhsShort () {
     if (title == null) return
     const pickOpts = await openXhsStylePicker()
     if (pickOpts == null) return
-    const { styleId, fontId } = pickOpts
+    const { styleId, fontId, readability: readPick } = pickOpts
+    const readability = readPick || cfg.xhsExportReadability || 'standard'
     const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
     const pageH = XHS_LAYOUT_H * XHS_EXPORT_SCALE
     const pick = await window.mobiAPI.xhsExportPickDir()
     if (!pick || pick.cancelled || !pick.path) return
     const st = xhsStyleById(styleId)
-    const mdParts = splitMdByH2ForXhsExport(getCurrentMd())
+    const mdParts = splitMdForXhsExport(getCurrentMd(), readability)
     const useParts = mdParts.length > 1
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 个「## 二级标题」拆成多段依次导出（文件名：段号-页号.png），是否继续？`)) return
+    const splitHint = readability === 'standard' ? '## 二级标题' : '## 与 ### 标题'
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（按 ${splitHint}）依次导出（文件名：段号-页号.png），是否继续？`)) return
 
     const files = []
     const runOne = async (mdSlice, segIdx0) => {
-      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null)
-      const raw = await window.html2canvas(surface, {
-        backgroundColor: st.canvasBg,
-        scale: XHS_EXPORT_SCALE,
-        useCORS: true,
-        allowTaint: true,
-        logging: false
-      })
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null, readability)
+      const raw = await captureXhsSurfaceToCanvas(surface, st.canvasBg)
       clearXhsExportHost()
       const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
       if (norm.height > XHS_MAX_CANVAS_H) {
         const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
-        alert(`${seg}仍超过单段高度上限（${XHS_MAX_CANVAS_H}px），请在该段内增加 \`###\` 小标题拆段，或精简内容。`)
+        alert(`${seg}仍超过单段高度上限（${XHS_MAX_CANVAS_H}px）。可改用导出对话框里的「标准」阅读档、在该段增加 \`###\` / \`##\` 拆段，或精简内容。`)
         throw new Error('xhs-height-limit')
       }
-      const pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
+      let pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
+      pages = dropTrailingBlankXhsPages(pages, st.canvasBg)
       for (let pi = 0; pi < pages.length; pi++) {
         stampExportSignature(pages[pi], st.dark)
         const data = await canvasToPngDataUrl(pages[pi])
@@ -1615,11 +2150,13 @@ async function exportXhsLong () {
     if (title == null) return
     const pickOpts = await openXhsStylePicker()
     if (pickOpts == null) return
-    const { styleId, fontId } = pickOpts
+    const { styleId, fontId, readability: readPick } = pickOpts
+    const readability = readPick || cfg.xhsExportReadability || 'standard'
     const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
-    const mdParts = splitMdByH2ForXhsExport(getCurrentMd())
+    const mdParts = splitMdForXhsExport(getCurrentMd(), readability)
     const useParts = mdParts.length > 1
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 个「## 二级标题」导出为多张长图（文件名：所选名-01.png、-02.png …），是否继续？`)) return
+    const splitHint = readability === 'standard' ? '## 二级标题' : '## 与 ### 标题'
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（按 ${splitHint}）导出为多张长图（文件名：所选名-01.png、-02.png …），是否继续？`)) return
 
     const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
     if (!p || p.cancelled || !p.filePath) return
@@ -1627,19 +2164,13 @@ async function exportXhsLong () {
     const st = xhsStyleById(styleId)
 
     const runSlice = async (mdSlice, outPath, segIdx0) => {
-      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null)
-      const raw = await window.html2canvas(surface, {
-        backgroundColor: st.canvasBg,
-        scale: XHS_EXPORT_SCALE,
-        useCORS: true,
-        allowTaint: true,
-        logging: false
-      })
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null, readability)
+      const raw = await captureXhsSurfaceToCanvas(surface, st.canvasBg)
       clearXhsExportHost()
       const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
       if (norm.height > XHS_MAX_CANVAS_H) {
         const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
-        alert(`${seg}仍超过单张长图安全高度（${XHS_MAX_CANVAS_H}px），请在该段内增加 \`###\` 拆段或改用短图导出。`)
+        alert(`${seg}仍超过单张长图安全高度（${XHS_MAX_CANVAS_H}px）。可改用「标准」阅读档、增加 \`###\` / \`##\` 拆段，或改用短图导出。`)
         throw new Error('xhs-height-limit')
       }
       stampExportSignature(norm, st.dark)

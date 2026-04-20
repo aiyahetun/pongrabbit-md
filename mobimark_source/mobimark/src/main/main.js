@@ -60,7 +60,9 @@ function defaultConfig () {
     /** 小红书短图/长图导出配色风格 id */
     xhsExportStyle: 'slate-blue-frost',
     /** 导出正文字体：noto-serif-sc | noto-sans-sc | smiley-sans | ibm-plex */
-    xhsExportFont: 'noto-sans-sc'
+    xhsExportFont: 'noto-sans-sc',
+    /** 导出图手机阅读字号：standard | comfort | large（仅导出层，不影响编辑器） */
+    xhsExportReadability: 'standard'
   }
 }
 
@@ -458,6 +460,24 @@ ipcMain.on('win-maximize', () => {
 ipcMain.on('win-close', () => mainWindow?.close())
 ipcMain.on('show-in-folder', (_, p) => { if (p) shell.showItemInFolder(p) })
 
+/** Cursor 调试会话 NDJSON：写入仓库根 `debug-45714f.log`（渲染进程 ingest fetch 可能不落盘） */
+function debugSessionLogFile () {
+  try {
+    return path.join(app.getAppPath(), '..', '..', 'debug-45714f.log')
+  } catch (_) {
+    return path.join(app.getPath('userData'), 'debug-45714f.log')
+  }
+}
+ipcMain.handle('debug-session-log', (_, entry) => {
+  try {
+    const line = typeof entry === 'string' ? entry : JSON.stringify(entry)
+    fs.appendFileSync(debugSessionLogFile(), line + '\n', 'utf8')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e && e.message) }
+  }
+})
+
 ipcMain.handle('get-config', () => ({ ...config }))
 function syncWinGlassMaterial (theme) {
   if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return
@@ -577,7 +597,94 @@ ipcMain.handle('export-html', async (_, { html, title }) => {
   fs.writeFileSync(filePath, doc, 'utf8')
 })
 
-ipcMain.handle('export-pdf', async (_, { html, title }) => {
+/** mobimark 包根目录（含 node_modules），相对 `src/main` 的上两级 */
+function mobimarkRootDir () {
+  return path.join(__dirname, '..', '..')
+}
+
+/**
+ * 与预览区一致的 PDF 文档：#preview-content + 字体 + style.css + hljs。
+ * 使用 file:// 绝对路径引用资源；由调用方写入临时文件后以 loadFile 打开（data: 页无法稳定加载 file: 样式）。
+ */
+function buildPdfExportDocument ({ html, title, theme, fontFamily }) {
+  const root = mobimarkRootDir()
+  const relToHref = (rel) => pathToFileURL(path.join(root, rel)).href
+  const styleHref = pathToFileURL(path.join(__dirname, '..', 'renderer', 'style.css')).href
+
+  const fontRels = [
+    'node_modules/@fontsource-variable/inter/index.css',
+    'node_modules/@fontsource/noto-sans-sc/latin-400.css',
+    'node_modules/@fontsource/noto-sans-sc/latin-500.css',
+    'node_modules/@fontsource/noto-sans-sc/latin-600.css',
+    'node_modules/@fontsource/noto-sans-sc/latin-700.css',
+    'node_modules/@fontsource/noto-sans-sc/chinese-simplified-400.css',
+    'node_modules/@fontsource/noto-sans-sc/chinese-simplified-500.css',
+    'node_modules/@fontsource/noto-sans-sc/chinese-simplified-600.css',
+    'node_modules/@fontsource/noto-sans-sc/chinese-simplified-700.css',
+    'node_modules/@fontsource/jetbrains-mono/latin-400.css',
+    'node_modules/@fontsource/jetbrains-mono/latin-500.css',
+    'node_modules/@fontsource/jetbrains-mono/latin-600.css',
+    'node_modules/@fontsource/jetbrains-mono/latin-700.css',
+    'node_modules/@fontsource/noto-serif-sc/latin-400.css',
+    'node_modules/@fontsource/noto-serif-sc/latin-500.css',
+    'node_modules/@fontsource/noto-serif-sc/latin-600.css',
+    'node_modules/@fontsource/noto-serif-sc/latin-700.css',
+    'node_modules/@fontsource/noto-serif-sc/chinese-simplified-400.css',
+    'node_modules/@fontsource/noto-serif-sc/chinese-simplified-500.css',
+    'node_modules/@fontsource/noto-serif-sc/chinese-simplified-600.css',
+    'node_modules/@fontsource/noto-serif-sc/chinese-simplified-700.css',
+    'node_modules/@fontsource/ibm-plex-sans/latin-400.css',
+    'node_modules/@fontsource/ibm-plex-sans/latin-500.css',
+    'node_modules/@fontsource/ibm-plex-sans/latin-600.css',
+    'node_modules/@fontsource/ibm-plex-sans/latin-700.css',
+    'node_modules/font-smiley-sans/style.css'
+  ]
+  const fontLinks = fontRels.map((rel) => `<link rel="stylesheet" href="${relToHref(rel)}">`).join('\n')
+
+  const th = theme === 'dark' ? 'dark' : theme === 'glass' ? 'glass' : 'light'
+  const hljsFile = th === 'dark' ? 'github-dark.min.css' : 'github.min.css'
+  const hljsHref = relToHref(`node_modules/highlight.js/styles/${hljsFile}`)
+
+  const bodyClasses = ['theme-' + th]
+  if (fontFamily && fontFamily !== 'system' && ['songti', 'kaiti', 'mono', 'sourcehan'].includes(fontFamily)) {
+    bodyClasses.push('font-' + fontFamily)
+  }
+
+  const safeTitle = escapeHtml(String(title || ''))
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${safeTitle}</title>
+${fontLinks}
+<link rel="stylesheet" href="${styleHref}">
+<link rel="stylesheet" href="${hljsHref}">
+<style>
+/* PDF 导出：去掉应用壳 html/body 的 overflow:hidden，避免长文档被裁切 */
+html, body {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+body {
+  margin: 0;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--bg-preview, #f7fafe);
+  color: var(--t1, #2b343a);
+}
+</style>
+</head>
+<body class="${bodyClasses.join(' ')}">
+<div id="preview-content">${html}</div>
+</body>
+</html>`
+}
+
+ipcMain.handle('export-pdf', async (_, { html, title, theme, fontFamily }) => {
   const safeTitle = (title || 'export').replace(/[\\/:*?"<>|]/g, '_')
   const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
     title: '导出 PDF',
@@ -585,10 +692,15 @@ ipcMain.handle('export-pdf', async (_, { html, title }) => {
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   })
   if (canceled || !filePath || !mainWindow) return { error: 'cancelled' }
-  const wrapped = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;padding:24px;}</style></head><body>${html}</body></html>`
+  const t = theme || config.theme || 'light'
+  const ff = fontFamily !== undefined && fontFamily !== null ? fontFamily : (config.fontFamily || 'system')
+  const wrapped = buildPdfExportDocument({ html, title, theme: t, fontFamily: ff })
+  const tmpPath = path.join(app.getPath('temp'), `pongrabbit-pdf-${process.pid}-${Date.now()}.html`)
   const pdfWin = new BrowserWindow({ show: false })
   try {
-    await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(wrapped))
+    fs.writeFileSync(tmpPath, wrapped, 'utf8')
+    await pdfWin.loadFile(tmpPath)
+    await pdfWin.webContents.executeJavaScript('document.fonts.ready').catch(() => {})
     const data = await pdfWin.webContents.printToPDF({
       printBackground: true,
       margins: { marginType: 'default' }
@@ -598,6 +710,9 @@ ipcMain.handle('export-pdf', async (_, { html, title }) => {
   } catch (e) {
     return { error: String(e.message) }
   } finally {
+    try {
+      fs.unlinkSync(tmpPath)
+    } catch (_) {}
     pdfWin.close()
   }
 })

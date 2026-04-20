@@ -1188,6 +1188,15 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
   max-width:700px;margin:0 auto;padding:36px 52px;
   font-family:var(--font-preview);font-size:15px;line-height:1.85;
   color:var(--t1);text-align:justify;word-break:break-word;
+  overflow-wrap:anywhere;
+}
+/* 两端对齐 + 行内 code（等宽）在 Blink/WebKit 下易挤压叠字；含 code 的块改顶格对齐 */
+#preview-content p:has(code),
+#preview-content li:has(code),
+#preview-content blockquote:has(code),
+#preview-content td:has(code),
+#preview-content th:has(code){
+  text-align:start;
 }
 #preview-content h1,#preview-content h2,#preview-content h3,
 #preview-content h4{color:var(--pv-h);font-weight:700;line-height:1.35;margin:1.6em 0 .5em}
@@ -1195,13 +1204,24 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 #preview-content h2{font-size:1.4em;color:var(--accent-dim)}
 #preview-content h3{font-size:1.15em}
 #preview-content h4{font-size:1em}
+#preview-content h1:has(code),#preview-content h2:has(code),#preview-content h3:has(code),#preview-content h4:has(code){text-align:start}
 #preview-content p{margin:.7em 0}
 #preview-content a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(53,97,144,.25)}
 #preview-content strong{font-weight:700;color:var(--pv-h)}
 #preview-content em{font-style:italic}
-#preview-content code{font-family:var(--font-code);font-size:.875em;background:var(--pv-code);padding:2px 6px;border-radius:4px}
-#preview-content pre{background:var(--pv-code);border-radius:var(--radius-lg);padding:18px 22px;overflow-x:auto;margin:1em 0}
-#preview-content pre code{background:none;padding:0}
+/* 行内 code：勿用 box-decoration-break:clone — 多行时 Blink/html2canvas 易把灰底画成细条或高度错位 */
+#preview-content *:not(pre) code{
+  font-family:var(--font-code);font-size:.875em;background:var(--pv-code);padding:2px 6px;border-radius:4px;
+  letter-spacing:normal;word-spacing:normal;line-height:inherit;vertical-align:baseline;
+}
+#preview-content pre{
+  background:var(--pv-code);border-radius:var(--radius-lg);padding:18px 22px;margin:1em 0;
+  overflow-x:auto;max-width:100%;
+}
+#preview-content pre code{
+  font-family:var(--font-code);font-size:.875em;
+  background:none;padding:0;letter-spacing:normal;word-spacing:normal;
+}
 #preview-content blockquote{border-left:4px solid var(--accent);margin:1em 0;padding:6px 0 6px 16px;color:var(--t2);font-style:italic;background:var(--accent-bg);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 #preview-content hr{border:none;border-top:1px solid var(--bd);margin:1.8em 0}
 #preview-content img{max-width:100%;height:auto;border-radius:var(--radius-sm);margin:.6em 0}
@@ -1214,39 +1234,46 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 #preview-content img{max-width:100%;border-radius:var(--radius-lg);display:block;margin:1em auto}
 #preview-content input[type="checkbox"]{margin-right:6px;accent-color:var(--accent)}
 .hljs{background:transparent!important}
+#preview-content pre code.hljs *{letter-spacing:normal;word-spacing:normal}
 
-/* 小红书 3:4 导出：离屏渲染，六种高级感配色（见项目「六种高级感配色」） */
+/* 小红书 3:4 导出：离屏渲染，六种高级感配色（见项目「六种高级感配色」）。
+   配色来自所选 xhs-style-*，与主窗口预览区 theme 无关，故与编辑时「电脑预览」色块/强调色可能不一致。 */
 #xhs-export-host{
   position:fixed;left:-24000px;top:0;width:1080px;z-index:-9999;
   pointer-events:none;overflow:visible;
 }
-/* html2canvas 用 Canvas 重画文字，CJK/表格里字宽常被算窄 → 叠字；离屏导出统一略增字距（仅 #xhs-export-host，不影响编辑器预览） */
+/* html2canvas：略放大行高与字距，减轻 CJK/代码混排时算高偏紧导致的行间叠影、同行挤字 */
+/* 正文字号由 app.js 写入；左右略对称，右侧仍多留一截给 canvas 右下角签名 */
 #xhs-export-host .xhs-export-surface{
-  width:1080px;box-sizing:border-box;padding:48px 56px;
-  background:var(--xhs-bg);color:var(--xhs-body);font-size:17px;line-height:1.8;
+  width:1080px;box-sizing:border-box;padding:52px 132px 72px 84px;
+  background:var(--xhs-bg);color:var(--xhs-body);
+  line-height:2.12;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  word-break:normal;
+  text-align:start;
   font-family:var(--font-preview),var(--font-ui),sans-serif;
-  letter-spacing:.03em;
-  word-spacing:.015em;
+  letter-spacing:0.014em;
+  word-spacing:normal;
+  font-feature-settings:normal;
 }
 /* 导出正文字体（SIL OFL；得意黑见 font-smiley-sans 包内许可证） */
 #xhs-export-host .xhs-export-surface.xhs-export-font-noto-serif-sc{
   font-family:"Noto Serif SC","Noto Sans SC",serif;
-  letter-spacing:.06em;
-  word-spacing:.02em;
+  letter-spacing:0.012em;
 }
 #xhs-export-host .xhs-export-surface.xhs-export-font-noto-sans-sc{
   font-family:"Noto Sans SC",system-ui,sans-serif;
-  letter-spacing:.035em;
+  letter-spacing:0.012em;
 }
-/* 得意黑为 SmileySans-Oblique，Canvas 下比常规黑体更易挤字 */
+/* 得意黑为 SmileySans-Oblique，Canvas 下比常规黑体更易挤字；略加字距减轻 html2canvas 同行字形挤叠 */
 #xhs-export-host .xhs-export-surface.xhs-export-font-smiley-sans{
   font-family:"smiley-sans","Noto Sans SC",system-ui,sans-serif;
-  letter-spacing:.09em;
-  word-spacing:.025em;
+  letter-spacing:0.024em;
 }
 #xhs-export-host .xhs-export-surface.xhs-export-font-ibm-plex{
   font-family:"IBM Plex Sans","Noto Sans SC",system-ui,sans-serif;
-  letter-spacing:.04em;
+  letter-spacing:0.012em;
 }
 #xhs-export-host .xhs-export-surface pre,
 #xhs-export-host .xhs-export-surface code,
@@ -1256,38 +1283,157 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 }
 #xhs-export-host .xhs-export-surface h1,#xhs-export-host .xhs-export-surface h2,
 #xhs-export-host .xhs-export-surface h3,#xhs-export-host .xhs-export-surface h4{
-  color:var(--xhs-heading);font-weight:700;line-height:1.35;margin:1.5em 0 .45em;
+  color:var(--xhs-heading);font-weight:700;line-height:1.68;margin:1.55em 0 .62em;
+  overflow-wrap:anywhere;word-break:break-word;
 }
 #xhs-export-host .xhs-export-surface h1{font-size:1.75em;margin-top:.35em}
 #xhs-export-host .xhs-export-surface h2{font-size:1.4em;color:var(--xhs-h2)}
 #xhs-export-host .xhs-export-surface h3{font-size:1.15em}
 #xhs-export-host .xhs-export-surface h4{font-size:1em}
-#xhs-export-host .xhs-export-surface p{margin:.65em 0}
+/* 段距用 padding，避免块级 margin 折叠导致 html2canvas 把相邻块算得过紧（章末长段、小标题下常见） */
+#xhs-export-host .xhs-export-surface p{
+  margin:0;
+  padding:0.72em 0;
+  line-height:2.12;
+  overflow-wrap:anywhere;
+  text-align:start;
+}
+#xhs-export-host .xhs-export-surface h1 + p,
+#xhs-export-host .xhs-export-surface h2 + p,
+#xhs-export-host .xhs-export-surface h3 + p,
+#xhs-export-host .xhs-export-surface h4 + p{padding-top:0.42em}
 #xhs-export-host .xhs-export-surface a{color:var(--xhs-link);text-decoration:none;border-bottom:1px solid var(--xhs-link-underline)}
-#xhs-export-host .xhs-export-surface strong{font-weight:700;color:var(--xhs-strong)}
-#xhs-export-host .xhs-export-surface em{font-style:italic}
+#xhs-export-host .xhs-export-surface strong{font-weight:700;color:var(--xhs-strong);line-height:inherit;letter-spacing:inherit}
+#xhs-export-host .xhs-export-surface em{font-style:italic;line-height:inherit}
+/*
+ * 行内 code：灰底画在 .xhs-inline-code-chip（inline-block）上，避免 html2canvas 把 code 背景铺成整行。
+ * 长段独占 code 仍用 .xhs-export-long-code 整块底纹（由 app.js 包 chip 之前已分类）。
+ */
+#xhs-export-host .xhs-export-surface .xhs-inline-code-chip{
+  display:inline-block;
+  vertical-align:text-bottom;
+  max-width:100%;
+  box-sizing:border-box;
+  background:var(--xhs-code-bg);
+  color:var(--xhs-code-fg);
+  border-radius:4px;
+  line-height:1.72;
+}
+#xhs-export-host .xhs-export-surface .xhs-inline-code-chip code{
+  font-family:var(--font-code);font-size:.875em;
+  background:transparent!important;
+  color:inherit;
+  padding:2px 6px;
+  border-radius:0;
+  line-height:inherit;
+  vertical-align:baseline;
+  display:inline;
+  margin:0;
+  box-sizing:border-box;
+}
 #xhs-export-host .xhs-export-surface code{
-  font-family:var(--font-code);font-size:.875em;background:var(--xhs-code-bg);color:var(--xhs-code-fg);
-  padding:2px 6px;border-radius:4px;
+  font-family:var(--font-code);font-size:.875em;
+  color:var(--xhs-code-fg);
+  padding:3px 6px;border-radius:4px;
+  line-height:1.72;
+  vertical-align:baseline;
+  display:inline;
+  margin:0 1px;
+  box-sizing:border-box;
+}
+/* 整段反引号：与 fenced 块类似整块排版，避免 html2canvas 下行叠上行、灰底高度不足 */
+#xhs-export-host .xhs-export-surface code.xhs-export-long-code{
+  display:block;width:100%;max-width:100%;
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
+  padding:14px 18px;margin:.55em 0;
+  line-height:1.9;font-size:0.92em;
+  border-radius:10px;
+  background:var(--xhs-code-bg);
+  color:var(--xhs-code-fg);
 }
 #xhs-export-host .xhs-export-surface pre{
-  background:var(--xhs-pre-bg);border-radius:12px;padding:18px 22px;overflow-x:auto;margin:1em 0;
+  background:var(--xhs-pre-bg);border-radius:12px;padding:18px 24px;margin:1em 0;
+  max-width:100%;box-sizing:border-box;
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;
+  line-height:1.9;
+  overflow-x:auto;overflow-y:visible;
 }
-#xhs-export-host .xhs-export-surface pre code{background:none;padding:0;color:inherit}
+#xhs-export-host .xhs-export-surface pre code{
+  background:none;padding:0;color:inherit;display:block;
+  line-height:inherit;margin:0;vertical-align:baseline;max-width:100%;
+  white-space:pre-wrap;overflow-wrap:inherit;word-break:inherit;
+}
+/* 无语言/正文类 ``` 围栏：导出不用 pre，每行独立 div，避免 html2canvas 在 pre 内叠行 */
+#xhs-export-host .xhs-export-surface .xhs-export-fenced-plain{
+  background:var(--xhs-pre-bg);
+  border-radius:12px;
+  padding:18px 24px;
+  margin:1em 0;
+  max-width:100%;
+  box-sizing:border-box;
+  color:var(--xhs-body);
+  font-family:var(--font-preview),var(--font-ui),sans-serif;
+  font-size:1em;
+  line-height:2.12;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+#xhs-export-host .xhs-export-surface .xhs-export-fence-line{
+  display:block;
+  min-height:1.45em;
+  padding:0.28em 0;
+  white-space:normal;
+}
 #xhs-export-host .xhs-export-surface blockquote{
-  border-left:4px solid var(--xhs-bq-border);margin:1em 0;padding:6px 0 6px 16px;color:var(--xhs-bq-text);font-style:italic;
-  background:var(--xhs-bq-bg);border-radius:0 6px 6px 0;
+  border-left:4px solid var(--xhs-bq-border);margin:1em 0;padding:14px 26px 16px 22px;color:var(--xhs-bq-text);font-style:italic;
+  background:var(--xhs-bq-bg);border-radius:0 8px 8px 0;
+  line-height:2.02;
+  overflow:visible;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  box-sizing:border-box;
+  max-width:100%;
+  text-align:start;
+}
+#xhs-export-host .xhs-export-surface blockquote p{
+  margin:0;
+  padding:0.52em 0;
+  line-height:2.02;
 }
 #xhs-export-host .xhs-export-surface hr{border:none;border-top:1px solid var(--xhs-hr);margin:1.6em 0}
 #xhs-export-host .xhs-export-surface img{max-width:100%;height:auto;border-radius:10px;display:block;margin:1em auto}
-#xhs-export-host .xhs-export-surface table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.93em}
+#xhs-export-host .xhs-export-surface table{
+  border-collapse:collapse;width:100%;max-width:100%;margin:1em 0;font-size:.93em;
+  table-layout:auto;overflow:visible;
+}
 #xhs-export-host .xhs-export-surface th,#xhs-export-host .xhs-export-surface td{
-  border:1px solid var(--xhs-table-border);padding:8px 14px;text-align:left;
+  border:1px solid var(--xhs-table-border);padding:12px 16px;text-align:left;
+  line-height:1.95;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  vertical-align:top;
 }
 #xhs-export-host .xhs-export-surface th{background:var(--xhs-th-bg);font-weight:600;color:var(--xhs-th-text)}
 #xhs-export-host .xhs-export-surface tr:nth-child(even) td{background:var(--xhs-td-alt)}
-#xhs-export-host .xhs-export-surface ul,#xhs-export-host .xhs-export-surface ol{margin:.5em 0 .5em 2em}
-#xhs-export-host .xhs-export-surface li{margin:.28em 0}
+#xhs-export-host .xhs-export-surface ul,#xhs-export-host .xhs-export-surface ol{margin:.55em 0 .55em 2em}
+#xhs-export-host .xhs-export-surface li{
+  margin:0;
+  padding:0.42em 0;
+  line-height:2.12;
+}
+#xhs-export-host .xhs-export-surface dl{margin:0.85em 0}
+#xhs-export-host .xhs-export-surface dt{
+  font-weight:700;
+  margin:0.65em 0 0.15em;
+  line-height:1.72;
+  overflow-wrap:anywhere;
+}
+#xhs-export-host .xhs-export-surface dd{
+  margin:0;
+  padding:0.38em 0 0.38em 1em;
+  line-height:2.12;
+  overflow-wrap:anywhere;
+}
 #xhs-export-host .xhs-export-surface input[type="checkbox"]{margin-right:6px;accent-color:var(--xhs-accent)}
 
 /* 深色导出：hljs 为浅色主题类名，统一压暗为可读配色 */
@@ -1395,6 +1541,9 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 .xhs-font-grid{
   display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:2px;
 }
+.xhs-readability-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:2px;
+}
 @media (min-width:520px){
   .xhs-font-grid{grid-template-columns:repeat(4,1fr)}
 }
@@ -1419,6 +1568,19 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
 .xhs-style-card-strip span{flex:1}
 .xhs-style-card-name{font-size:13px;font-weight:600;color:var(--t1);line-height:1.25}
 .xhs-style-card-sub{font-size:10px;color:var(--t3);margin-top:2px;text-transform:none;letter-spacing:0}
+.xhs-read-card{
+  display:flex;flex-direction:column;align-items:flex-start;text-align:left;
+  padding:8px 10px;border-radius:var(--radius-md);
+  border:2px solid var(--bd);background:var(--bg-hover);cursor:pointer;
+  font-family:var(--font-ui);min-height:56px;transition:border-color .12s,box-shadow .12s;
+}
+.xhs-read-card:hover{border-color:var(--accent);box-shadow:0 4px 12px rgba(0,0,0,.07)}
+.xhs-read-card.selected{
+  border-color:var(--accent);box-shadow:0 0 0 2px rgba(53,97,144,.12);
+  background:var(--bg-active);
+}
+.xhs-read-card-name{font-size:13px;font-weight:600;color:var(--t1);line-height:1.25}
+.xhs-read-card-sub{font-size:10px;color:var(--t3);margin-top:3px;line-height:1.35;text-transform:none;letter-spacing:0}
 .xhs-font-card{
   display:flex;flex-direction:column;align-items:flex-start;text-align:left;
   padding:8px 10px;border-radius:var(--radius-md);

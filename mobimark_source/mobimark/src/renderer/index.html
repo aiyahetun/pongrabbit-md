@@ -279,10 +279,13 @@
 <div id="xhs-style-dialog" class="dialog" style="display:none">
   <div class="dialog-box xhs-style-dialog-box">
     <div class="dialog-title">导出风格与字体</div>
-    <p class="xhs-style-dialog-hint">选择配色与正文字体；导出固定为 2× 像素（约 2160 宽，放大更清晰）。每张图右下角有小签名。</p>
+    <p class="xhs-style-dialog-hint">选择配色、正文字体与<strong>导出图</strong>上的手机阅读字号（不改编辑器字号）。导出固定 2× 像素（约 2160 宽）。每张图右下角有小签名。</p>
     <div class="xhs-export-section-label">配色</div>
     <div id="xhs-style-grid" class="xhs-style-grid" role="listbox" aria-label="导出风格"></div>
-    <div class="xhs-export-section-label xhs-export-section-label-mt">正文字体</div>
+    <div class="xhs-export-section-label xhs-export-section-label-mt">手机阅读字号（仅导出）</div>
+    <div id="xhs-readability-grid" class="xhs-readability-grid" role="listbox" aria-label="导出阅读字号"></div>
+    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">「舒适 / 加大」会明显放大导出正文字号（不改编辑器），并尽量按 <code>###</code> 小标题再拆段，减轻单图过高报错。</p>
+    <div class="xhs-export-section-label">正文字体</div>
     <div id="xhs-font-grid" class="xhs-font-grid" role="listbox" aria-label="导出字体"></div>
     <div class="dialog-btns">
       <button type="button" id="xhs-style-cancel">取消</button>

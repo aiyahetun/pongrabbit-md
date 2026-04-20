@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url')
 contextBridge.exposeInMainWorld('pengPlatform', process.platform)
 
 contextBridge.exposeInMainWorld('mobiAPI', {
+  debugSessionLog: (entry) => ipcRenderer.invoke('debug-session-log', entry),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   openFile: () => ipcRenderer.invoke('open-file'),
