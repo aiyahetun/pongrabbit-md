@@ -277,6 +277,8 @@ function createWindow () {
     frame: false,
     /* 与 npm start 一致：Mac/Win 均用透明窗口，由 syncGlassWindowBackground 按主题再设底色 */
     transparent: true,
+    /* transparent 时 Electron 默认 hasShadow=false，窗口贴桌面时缺少轮廓；显式打开系统阴影 */
+    hasShadow: true,
     backgroundColor: '#00000000',
     backgroundMaterial: process.platform === 'win32' && winAcrylic ? 'acrylic' : 'none',
     icon: windowIconPath(),
@@ -294,6 +296,9 @@ function createWindow () {
     winOpts.trafficLightPosition = { x: 20, y: 15 }
   }
   const win = new BrowserWindow(winOpts)
+  try {
+    win.setHasShadow(true)
+  } catch (_) {}
   if (process.platform === 'darwin') {
     win.setWindowButtonVisibility(true)
   }

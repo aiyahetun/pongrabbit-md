@@ -635,6 +635,40 @@ body {
   -webkit-font-smoothing:antialiased;
 }
 
+/*
+ * 无边框 + 透明窗口：系统级轮廓阴影在 Win 上常被关掉；用置顶层叠「实线描边 + 外扩阴影」
+ *（html overflow:hidden 时 body 的 outline 不可靠）。z-index 低于 #panel-mask(100) 与 .dialog(200)。
+ */
+#window-chrome-edge {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.12),
+    0 10px 42px rgba(0, 0, 0, 0.26),
+    0 3px 12px rgba(0, 0, 0, 0.16);
+}
+.theme-dark #window-chrome-edge {
+  border-color: rgba(255, 255, 255, 0.26);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 12px 48px rgba(0, 0, 0, 0.55),
+    0 4px 16px rgba(0, 0, 0, 0.38);
+}
+.theme-glass #window-chrome-edge {
+  border-color: rgba(0, 0, 0, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 0 1px rgba(0, 0, 0, 0.14),
+    0 12px 46px rgba(0, 0, 0, 0.24),
+    0 4px 16px rgba(0, 0, 0, 0.14);
+}
+
 /* 背景层（勿用负 z-index：透明窗口下易落到白底 html 之下，壁纸与 backdrop-filter 均不可见） */
 #bg-layer {
   position:fixed; inset:0; z-index:0;

@@ -1251,6 +1251,59 @@ const XHS_LAYOUT_H = 1440
 const XHS_EXPORT_SCALE = 2
 const XHS_MAX_CANVAS_H = 32000
 
+/** 按二级标题(##)拆 Markdown，供超长文导出；无 ## 时返回整篇单段 */
+function splitMdByH2ForXhsExport (md) {
+  const t = String(md || '').replace(/\r\n/g, '\n')
+  let parts = t.split(/(?=^## .+$)/m).map(s => s.trim()).filter(s => s.length > 0)
+  if (parts.length >= 2 && !/^## .+$/m.test(parts[0])) {
+    parts = [parts[0] + '\n\n' + parts[1], ...parts.slice(2)]
+  }
+  return parts.length ? parts : [t.trim()].filter(Boolean)
+}
+
+/** 与预览一致的 Markdown → HTML（hljs、本地图片路径），不写入预览区 */
+async function mdFragmentToExportableHtml (md) {
+  if (!window.marked) throw new Error('marked 未加载')
+  window.marked.setOptions({ breaks: true, gfm: true })
+  const src = String(md).replace(/^([ \t]*[-*+] )\[([ xX])\] /gm, (_, b, c) => `${b}<input type="checkbox" ${c !== ' ' ? 'checked' : ''}> `)
+  const wrap = document.createElement('div')
+  wrap.innerHTML = window.marked.parse(src)
+  if (window.hljsAPI) {
+    for (const blk of wrap.querySelectorAll('pre code')) {
+      const lang = (blk.className.match(/language-([\w-]+)/) || [])[1] || ''
+      try {
+        const r = await window.hljsAPI.highlight(blk.textContent, lang)
+        blk.innerHTML = r.value
+        blk.classList.add('hljs')
+      } catch (_) {}
+    }
+  }
+  for (const img of wrap.querySelectorAll('img')) {
+    const s = img.getAttribute('src')
+    if (!s || /^https?:\/\//i.test(s)) continue
+    try {
+      const resolved = await window.mobiAPI.resolveMarkdownImage(currentFile || '', s)
+      if (resolved) img.setAttribute('src', resolved)
+    } catch (_) {}
+  }
+  return wrap.innerHTML
+}
+
+/** 多段长图：在已选路径旁生成 stem-01.png …（单段时返回原路径） */
+function xhsDerivedLongPngPaths (pickedPath, nParts) {
+  const n = Math.max(1, Math.round(nParts))
+  if (n <= 1) return [pickedPath]
+  const last = Math.max(pickedPath.lastIndexOf('/'), pickedPath.lastIndexOf('\\'))
+  const dir = last >= 0 ? pickedPath.slice(0, last + 1) : ''
+  const file = last >= 0 ? pickedPath.slice(last + 1) : pickedPath
+  const stem = file.replace(/\.png$/i, '') || 'export'
+  const paths = []
+  for (let i = 0; i < n; i++) {
+    paths.push(dir + stem + '-' + String(i + 1).padStart(2, '0') + '.png')
+  }
+  return paths
+}
+
 async function getXhsExportTitle () {
   let t = ''
   if (currentFile) t = bn(currentFile).replace(/\.md$/i, '')
@@ -1433,9 +1486,14 @@ async function waitXhsExportFonts (fontId) {
   } catch (_) {}
 }
 
-async function buildXhsExportSurface (styleId, fontId) {
-  await renderPreview()
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+/**
+ * @param {string|null} mdChunk 若传入则仅从该段 Markdown 构建（不刷新整篇预览），用于按 ## 拆段导出
+ */
+async function buildXhsExportSurface (styleId, fontId, mdChunk = null) {
+  if (mdChunk == null) {
+    await renderPreview()
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  }
   if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载，请检查 node_modules 与 index.html 脚本引用')
   const st = xhsStyleById(styleId)
   const fd = xhsFontById(fontId)
@@ -1449,7 +1507,7 @@ async function buildXhsExportSurface (styleId, fontId) {
   const surface = document.createElement('div')
   surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id
   if (st.dark) surface.classList.add('xhs-export--dark')
-  surface.innerHTML = previewEl.innerHTML
+  surface.innerHTML = mdChunk != null ? await mdFragmentToExportableHtml(mdChunk) : previewEl.innerHTML
   stripDocPathFromXhsSurface(surface)
   if (fd.id === 'smiley-sans') injectSmileySansFaceIntoSurface(surface)
   host.appendChild(surface)
@@ -1498,32 +1556,53 @@ async function exportXhsShort () {
     const pick = await window.mobiAPI.xhsExportPickDir()
     if (!pick || pick.cancelled || !pick.path) return
     const st = xhsStyleById(styleId)
-    const surface = await buildXhsExportSurface(styleId, fontId)
-    const raw = await window.html2canvas(surface, {
-      backgroundColor: st.canvasBg,
-      scale: XHS_EXPORT_SCALE,
-      useCORS: true,
-      allowTaint: true,
-      logging: false
-    })
-    clearXhsExportHost()
-    const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
-    if (norm.height > XHS_MAX_CANVAS_H) {
-      alert('文档过长，请精简内容或改用长图导出（仍可能受系统限制）。')
-      return
-    }
-    const pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
+    const mdParts = splitMdByH2ForXhsExport(getCurrentMd())
+    const useParts = mdParts.length > 1
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 个「## 二级标题」拆成多段依次导出（文件名：段号-页号.png），是否继续？`)) return
+
     const files = []
-    for (let i = 0; i < pages.length; i++) {
-      stampExportSignature(pages[i], st.dark)
-      const data = await canvasToPngDataUrl(pages[i])
-      files.push({ name: `${String(i + 1).padStart(2, '0')}.png`, data })
+    const runOne = async (mdSlice, segIdx0) => {
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null)
+      const raw = await window.html2canvas(surface, {
+        backgroundColor: st.canvasBg,
+        scale: XHS_EXPORT_SCALE,
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      })
+      clearXhsExportHost()
+      const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
+      if (norm.height > XHS_MAX_CANVAS_H) {
+        const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
+        alert(`${seg}仍超过单段高度上限（${XHS_MAX_CANVAS_H}px），请在该段内增加 \`###\` 小标题拆段，或精简内容。`)
+        throw new Error('xhs-height-limit')
+      }
+      const pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
+      for (let pi = 0; pi < pages.length; pi++) {
+        stampExportSignature(pages[pi], st.dark)
+        const data = await canvasToPngDataUrl(pages[pi])
+        const name = useParts
+          ? `${String(segIdx0 + 1).padStart(2, '0')}-${String(pi + 1).padStart(3, '0')}.png`
+          : `${String(pi + 1).padStart(2, '0')}.png`
+        files.push({ name, data })
+      }
     }
+
+    if (useParts) {
+      for (let si = 0; si < mdParts.length; si++) {
+        await runOne(mdParts[si], si)
+      }
+    } else {
+      await runOne(null, 0)
+    }
+
     const r = await window.mobiAPI.xhsExportWriteMany({ parentPath: pick.path, folderName: title, files })
     if (r && r.error) { alert(r.error); return }
-    alert(`已导出 ${pages.length} 张图片（每张约 ${pageW}×${pageH}，${XHS_EXPORT_SCALE}× 采样）：\n${r.dir}`)
+    const segHint = useParts ? `（${mdParts.length} 段共 ${files.length} 张）` : `（${files.length} 张）`
+    alert(`已导出短图${segHint}，每张约 ${pageW}×${pageH}，${XHS_EXPORT_SCALE}× 采样：\n${r.dir}`)
   } catch (e) {
     clearXhsExportHost()
+    if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
     alert('导出短图失败：' + (e.message || String(e)))
   }
@@ -1538,30 +1617,49 @@ async function exportXhsLong () {
     if (pickOpts == null) return
     const { styleId, fontId } = pickOpts
     const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
+    const mdParts = splitMdByH2ForXhsExport(getCurrentMd())
+    const useParts = mdParts.length > 1
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 个「## 二级标题」导出为多张长图（文件名：所选名-01.png、-02.png …），是否继续？`)) return
+
     const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
     if (!p || p.cancelled || !p.filePath) return
+    const outPaths = xhsDerivedLongPngPaths(p.filePath, useParts ? mdParts.length : 1)
     const st = xhsStyleById(styleId)
-    const surface = await buildXhsExportSurface(styleId, fontId)
-    const raw = await window.html2canvas(surface, {
-      backgroundColor: st.canvasBg,
-      scale: XHS_EXPORT_SCALE,
-      useCORS: true,
-      allowTaint: true,
-      logging: false
-    })
-    clearXhsExportHost()
-    const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
-    if (norm.height > XHS_MAX_CANVAS_H) {
-      alert('文档过长，超出单张图片安全高度，请分段导出短图。')
-      return
+
+    const runSlice = async (mdSlice, outPath, segIdx0) => {
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null)
+      const raw = await window.html2canvas(surface, {
+        backgroundColor: st.canvasBg,
+        scale: XHS_EXPORT_SCALE,
+        useCORS: true,
+        allowTaint: true,
+        logging: false
+      })
+      clearXhsExportHost()
+      const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
+      if (norm.height > XHS_MAX_CANVAS_H) {
+        const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
+        alert(`${seg}仍超过单张长图安全高度（${XHS_MAX_CANVAS_H}px），请在该段内增加 \`###\` 拆段或改用短图导出。`)
+        throw new Error('xhs-height-limit')
+      }
+      stampExportSignature(norm, st.dark)
+      const data = await canvasToPngDataUrl(norm)
+      const w = await window.mobiAPI.xhsExportWriteOne({ filePath: outPath, data })
+      if (w && w.error) { alert(w.error); throw new Error(w.error) }
     }
-    stampExportSignature(norm, st.dark)
-    const data = await canvasToPngDataUrl(norm)
-    const w = await window.mobiAPI.xhsExportWriteOne({ filePath: p.filePath, data })
-    if (w && w.error) { alert(w.error); return }
-    alert(`长图已保存（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样）：\n` + p.filePath)
+
+    if (useParts) {
+      for (let si = 0; si < mdParts.length; si++) {
+        await runSlice(mdParts[si], outPaths[si], si)
+      }
+      alert(`已导出 ${mdParts.length} 张长图（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样），例如：\n${outPaths[0]}`)
+    } else {
+      await runSlice(null, outPaths[0], 0)
+      alert(`长图已保存（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样）：\n` + outPaths[0])
+    }
   } catch (e) {
     clearXhsExportHost()
+    if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
     alert('导出长图失败：' + (e.message || String(e)))
   }
