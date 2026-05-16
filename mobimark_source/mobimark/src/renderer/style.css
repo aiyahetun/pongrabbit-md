@@ -1464,19 +1464,22 @@ body.font-sourcehan #preview-content{font-family:var(--font-sourcehan)}
   --xhs-hl-plain:#ebe3e1;--xhs-hl-kw:#f0b8a8;--xhs-hl-str:#b8e0c8;--xhs-hl-cmt:#9a8a88;
   --xhs-hl-title:#e8d4cf;--xhs-hl-num:#c9b8e8;
 }
-/* ─── 风格：暖调浓缩 ─── */
-#xhs-export-host .xhs-export-surface.xhs-style-warm-espresso{
-  --xhs-bg:radial-gradient(ellipse 85% 50% at 100% 0%, rgba(212,163,115,.14) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 45% at 0% 100%, rgba(90,60,40,.35) 0%, transparent 45%),#1E120D;
-  --xhs-body:#FDFBF7;--xhs-heading:#fffaf5;--xhs-h2:#D4A373;--xhs-strong:#fff;
-  --xhs-link:#e8c9a4;--xhs-link-underline:rgba(212,163,115,.4);
-  --xhs-code-bg:rgba(212,163,115,.12);--xhs-code-fg:inherit;--xhs-pre-bg:rgba(0,0,0,.28);
-  --xhs-bq-border:#D4A373;--xhs-bq-bg:rgba(212,163,115,.1);--xhs-bq-text:#ede4d9;
-  --xhs-hr:rgba(253,251,247,.15);--xhs-table-border:rgba(253,251,247,.18);
-  --xhs-th-bg:rgba(212,163,115,.14);--xhs-th-text:#1a120d;--xhs-td-alt:rgba(212,163,115,.06);
-  --xhs-accent:#D4A373;
-  --xhs-hl-plain:#f5ebe3;--xhs-hl-kw:#f0c49a;--xhs-hl-str:#a8d4c4;--xhs-hl-cmt:#9a8f84;
-  --xhs-hl-title:#ddb892;--xhs-hl-num:#b8c9ff;
+/* ─── 风格：疏云素笺 ─── */
+#xhs-export-host .xhs-export-surface.xhs-style-sparse-cloud{
+  --xhs-bg:
+    radial-gradient(ellipse 52% 38% at 10% 18%, rgba(100,100,100,.042) 0%, transparent 58%),
+    radial-gradient(ellipse 40% 30% at 82% 52%, rgba(100,100,100,.036) 0%, transparent 54%),
+    radial-gradient(ellipse 46% 32% at 48% 90%, rgba(100,100,100,.030) 0%, transparent 50%),
+    #fafaf8;
+  --xhs-body:#1c1c1c;--xhs-heading:#111111;--xhs-h2:#555555;--xhs-strong:#000000;
+  --xhs-link:#4a4a4a;--xhs-link-underline:rgba(0,0,0,.2);
+  --xhs-code-bg:rgba(0,0,0,.055);--xhs-code-fg:#1c1c1c;--xhs-pre-bg:rgba(0,0,0,.04);
+  --xhs-bq-border:#c0c0c0;--xhs-bq-bg:rgba(0,0,0,.03);--xhs-bq-text:#555555;
+  --xhs-hr:rgba(0,0,0,.1);--xhs-table-border:rgba(0,0,0,.12);
+  --xhs-th-bg:rgba(0,0,0,.04);--xhs-th-text:#111111;--xhs-td-alt:rgba(0,0,0,.02);
+  --xhs-accent:#888888;
+  --xhs-hl-plain:#2a2a2a;--xhs-hl-kw:#555555;--xhs-hl-str:#4a7060;--xhs-hl-cmt:#aaaaaa;
+  --xhs-hl-title:#333333;--xhs-hl-num:#666666;
 }
 /* ─── 风格：深海苔绿 ─── */
 #xhs-export-host .xhs-export-surface.xhs-style-deep-ocean-moss{

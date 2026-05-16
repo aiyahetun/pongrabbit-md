@@ -1,6 +1,6 @@
 {
   "name": "pongrabbit-md",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "pongrabbit-MD — Markdown 编辑器",
   "main": "src/main/main.js",
   "scripts": {

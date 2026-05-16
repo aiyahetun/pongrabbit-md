@@ -1130,7 +1130,7 @@ function openPromptDialog({title,label,defaultValue,placeholder}){
 /** 六种高级感配色（与项目目录「六种高级感配色 / code.html」卡片一致） */
 const XHS_EXPORT_STYLES = [
   { id: 'misty-rose', name: '晨雾玫瑰', sub: '柔和朦胧', dark: true, canvasBg: '#3a3234', strip: ['#F5E6E8', '#D5B9B2', '#4A3F3F'] },
-  { id: 'warm-espresso', name: '暖调浓缩', sub: '沉稳氛围', dark: true, canvasBg: '#1E120D', strip: ['#1E120D', '#D4A373', '#FDFBF7'] },
+  { id: 'sparse-cloud', name: '疏云素笺', sub: '素白水墨', dark: false, canvasBg: '#fafaf8', strip: ['#fafaf8', '#d0d0d0', '#1c1c1c'] },
   { id: 'deep-ocean-moss', name: '深海苔绿', sub: '森系叙事', dark: true, canvasBg: '#1A2E2C', strip: ['#1A2E2C', '#4A6D66', '#E0E7E5'] },
   { id: 'slate-blue-frost', name: '雾蓝霜灰', sub: '专业浅色', dark: false, canvasBg: '#CFD8DC', strip: ['#CFD8DC', '#607D8B', '#263238'] },
   { id: 'sage-earth', name: '鼠尾草大地', sub: '自然 calm', dark: false, canvasBg: '#E8EDEB', strip: ['#E8EDEB', '#94A79E', '#4A5D54'] },
@@ -1373,19 +1373,64 @@ function splitChunkByH3 (chunk) {
   return parts.length ? parts : [t]
 }
 
+/** 各阅读档的单段字符安全上限（含段间距/标题等高度开销的保守估算） */
+const XHS_MAX_CHARS_PER_SEGMENT = { standard: 9000, comfort: 5500, large: 3500 }
+
 /**
- * 导出用 Markdown 段列表：标准档仅按 ##；舒适/加大在 ## 后再尽量按 ### 拆，降低单图高度触顶
+ * 兜底拆分：在段落边界（空行）切开超长 chunk，不依赖标题存在。
+ * 围栏代码块内的空行不视为切割点，避免拆断 ``` 块。
+ * 若单段落本身超长（无空行可切），按行数硬切，确保任意内容都能导出。
+ */
+function splitChunkByParagraphs (chunk, maxChars) {
+  const text = String(chunk || '').trim()
+  if (!text || text.length <= maxChars) return text ? [text] : []
+  const lines = text.split('\n')
+  const parts = []
+  let buf = []
+  let bufLen = 0
+  let inFence = false
+  const flush = () => {
+    const s = buf.join('\n').trim()
+    if (s) parts.push(s)
+    buf = []
+    bufLen = 0
+  }
+  for (const line of lines) {
+    const tr = line.trim()
+    if (tr.startsWith('```') || tr.startsWith('~~~')) inFence = !inFence
+    // 段落边界且已超限：在空行处切割
+    if (!inFence && tr === '' && bufLen >= maxChars) { flush(); continue }
+    // 单段落内部超限（无空行可切）：按行强制切割，不拆断围栏块
+    if (!inFence && bufLen >= maxChars * 1.5) { flush() }
+    buf.push(line)
+    bufLen += line.length + 1
+  }
+  flush()
+  return parts.length ? parts : [text]
+}
+
+/**
+ * 导出用 Markdown 段列表：标准档仅按 ##；舒适/加大在 ## 后再尽量按 ### 拆，降低单图高度触顶。
+ * 最后对所有 chunk 做段落兜底拆分，避免无标题长文触顶报错。
  */
 function splitMdForXhsExport (md, readability) {
   const h2 = splitMdByH2ForXhsExport(md)
-  if (readability === 'standard') return h2
-  const flat = []
-  for (const p of h2) {
-    const subs = splitChunkByH3(p)
-    if (subs.length <= 1) flat.push(p)
-    else flat.push(...subs)
+  let chunks
+  if (readability === 'standard') {
+    chunks = h2
+  } else {
+    const flat = []
+    for (const p of h2) {
+      const subs = splitChunkByH3(p)
+      if (subs.length <= 1) flat.push(p)
+      else flat.push(...subs)
+    }
+    chunks = flat.length ? flat : h2
   }
-  return flat.length ? flat : h2
+  const maxChars = XHS_MAX_CHARS_PER_SEGMENT[readability] || XHS_MAX_CHARS_PER_SEGMENT.standard
+  const final = []
+  for (const chunk of chunks) final.push(...splitChunkByParagraphs(chunk, maxChars))
+  return final.length ? final : chunks
 }
 
 /** 与预览一致的 Markdown → HTML（hljs、本地图片路径），不写入预览区 */
