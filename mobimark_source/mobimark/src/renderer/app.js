@@ -110,6 +110,7 @@ async function init() {
     window.mobiAPI.saveConfig({ pendingContent: '' })
     renderPreview()
   }
+  resetEditorHistory()
   const initialPath = await window.mobiAPI.consumeInitialFile()
   if (initialPath) await openFileFromPath(initialPath)
 }
@@ -176,6 +177,7 @@ function applyOpenedDocument (r) {
   }
   renderPreview()
   updateStatus()
+  resetEditorHistory()
 }
 
 // ── Config ───────────────────────────────────────────────────
@@ -436,9 +438,13 @@ function setMode(mode) {
     $('tab-'+m).classList.toggle('active',m===mode)
   )
   // 同步内容：从 wysiwyg → md，从 md → wysiwyg
-  if (mode==='markdown'&&_lastSrc==='wysiwyg') mdEditor.value=richToMd()
+  if (mode==='markdown'&&_lastSrc==='wysiwyg') {
+    mdEditor.value=richToMd()
+    resetMdHistory()
+  }
   if ((mode==='wysiwyg'||mode==='split'&&_lastSrc==='md')&&_lastSrc==='md') {
     richEditor.innerHTML=md2html(mdEditor.value)
+    resetRichHistory()
   }
 
   // 工具栏
@@ -480,7 +486,13 @@ function setMode(mode) {
 
 // ════ 富文本编辑器 ══════════════════════════════════════════
 function setupRichEditor(){
-  richEditor.addEventListener('input',()=>{_lastSrc='wysiwyg';setModified(true);scheduleRender();updateStatus()})
+  richEditor.addEventListener('input',()=>{
+    _lastSrc='wysiwyg'
+    recordRichHistory()
+    setModified(true)
+    scheduleRender()
+    updateStatus()
+  })
   richEditor.addEventListener('keydown',e=>{
     const acc=e.metaKey||e.ctrlKey
     if(acc&&e.key.toLowerCase()==='a'){e.preventDefault();document.execCommand('selectAll');return}
@@ -538,7 +550,9 @@ function wrapTag(tag){
   if(!sel.rangeCount)return
   const r=sel.getRangeAt(0),el=document.createElement(tag)
   try{r.surroundContents(el)}catch(e){el.appendChild(r.extractContents());r.insertNode(el)}
-  setModified(true);scheduleRender()
+  setModified(true)
+  recordRichHistory()
+  scheduleRender()
 }
 function insertCodeBlock(){
   const sel=window.getSelection()
@@ -547,12 +561,20 @@ function insertCodeBlock(){
   if(sel.rangeCount&&!sel.isCollapsed)sel.getRangeAt(0).deleteContents()
   pre.appendChild(code)
   document.execCommand('insertHTML',false,pre.outerHTML)
-  setModified(true);scheduleRender()
+  setModified(true)
+  recordRichHistory()
+  scheduleRender()
 }
 
 // ════ MD 工具栏 ══════════════════════════════════════════════
 function setupMdToolbar(){
-  mdEditor.addEventListener('input',()=>{_lastSrc='md';setModified(true);scheduleRender();updateStatus()})
+  mdEditor.addEventListener('input',()=>{
+    _lastSrc='md'
+    recordMdHistory()
+    setModified(true)
+    scheduleRender()
+    updateStatus()
+  })
   mdEditor.addEventListener('keydown',e=>{
     if(e.key==='Tab'){e.preventDefault();insertMd('  ');return}
     const acc=e.metaKey||e.ctrlKey
@@ -660,6 +682,7 @@ async function newFile(){
   if(r.action==='save')await saveFile()
   if(r.action!=='cancel'){
     richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
+    resetEditorHistory()
     setModified(false);setTitle('无题文档');updateStatus()
   }
 }
@@ -816,13 +839,161 @@ function nodeToMd(node){
 }
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
+// ════ 统一撤销/重做（严格按操作顺序，文字与表格结构同一栈）════
+const EDITOR_HIST_MAX = 80
+let _histApplying = false
+let _richHist = []
+let _richHistIdx = 0
+let _mdHist = []
+let _mdHistIdx = 0
+
+function isMdEditing () {
+  return editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')
+}
+
+function getRichCaretOffset () {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return 0
+  const range = sel.getRangeAt(0)
+  if (!richEditor.contains(range.startContainer)) return 0
+  const pre = range.cloneRange()
+  pre.selectNodeContents(richEditor)
+  pre.setEnd(range.startContainer, range.startOffset)
+  return pre.toString().length
+}
+
+function setRichCaretOffset (offset) {
+  const walker = document.createTreeWalker(richEditor, NodeFilter.SHOW_TEXT)
+  let cum = 0
+  let node
+  while ((node = walker.nextNode())) {
+    const len = node.textContent.length
+    if (cum + len >= offset) {
+      const range = document.createRange()
+      range.setStart(node, Math.min(Math.max(0, offset - cum), len))
+      range.collapse(true)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+      return
+    }
+    cum += len
+  }
+  const range = document.createRange()
+  range.selectNodeContents(richEditor)
+  range.collapse(false)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+function snapshotRich () {
+  return { html: richEditor.innerHTML, caret: getRichCaretOffset() }
+}
+
+function snapshotMd () {
+  return { value: mdEditor.value, start: mdEditor.selectionStart, end: mdEditor.selectionEnd }
+}
+
+function resetRichHistory () {
+  _richHist = [snapshotRich()]
+  _richHistIdx = 0
+}
+
+function resetMdHistory () {
+  _mdHist = [snapshotMd()]
+  _mdHistIdx = 0
+}
+
+function resetEditorHistory () {
+  resetRichHistory()
+  resetMdHistory()
+}
+
+function recordRichHistory () {
+  if (_histApplying || readOnlyDoc) return
+  const snap = snapshotRich()
+  const cur = _richHist[_richHistIdx]
+  if (cur && cur.html === snap.html && cur.caret === snap.caret) return
+  _richHist = _richHist.slice(0, _richHistIdx + 1)
+  _richHist.push(snap)
+  _richHistIdx = _richHist.length - 1
+  while (_richHist.length > EDITOR_HIST_MAX) {
+    _richHist.shift()
+    _richHistIdx--
+  }
+}
+
+function recordMdHistory () {
+  if (_histApplying || readOnlyDoc) return
+  const snap = snapshotMd()
+  const cur = _mdHist[_mdHistIdx]
+  if (cur && cur.value === snap.value && cur.start === snap.start && cur.end === snap.end) return
+  _mdHist = _mdHist.slice(0, _mdHistIdx + 1)
+  _mdHist.push(snap)
+  _mdHistIdx = _mdHist.length - 1
+  while (_mdHist.length > EDITOR_HIST_MAX) {
+    _mdHist.shift()
+    _mdHistIdx--
+  }
+}
+
+function applyRichHistoryIndex (idx) {
+  const snap = _richHist[idx]
+  if (!snap) return
+  _histApplying = true
+  richEditor.innerHTML = snap.html
+  richEditor.focus()
+  setRichCaretOffset(snap.caret || 0)
+  _histApplying = false
+}
+
+function applyMdHistoryIndex (idx) {
+  const snap = _mdHist[idx]
+  if (!snap) return
+  _histApplying = true
+  mdEditor.value = snap.value
+  mdEditor.focus()
+  mdEditor.setSelectionRange(snap.start, snap.end)
+  _histApplying = false
+}
+
+function undoEditorHistory () {
+  if (isMdEditing()) {
+    if (_mdHistIdx <= 0) return false
+    _mdHistIdx--
+    applyMdHistoryIndex(_mdHistIdx)
+    return true
+  }
+  if (_richHistIdx <= 0) return false
+  _richHistIdx--
+  applyRichHistoryIndex(_richHistIdx)
+  return true
+}
+
+function redoEditorHistory () {
+  if (isMdEditing()) {
+    if (_mdHistIdx >= _mdHist.length - 1) return false
+    _mdHistIdx++
+    applyMdHistoryIndex(_mdHistIdx)
+    return true
+  }
+  if (_richHistIdx >= _richHist.length - 1) return false
+  _richHistIdx++
+  applyRichHistoryIndex(_richHistIdx)
+  return true
+}
+
 // ════ MD 格式辅助 ════════════════════════════════════════════
 function insertMd(txt){
   if(readOnlyDoc)return
   const s=mdEditor.selectionStart,e2=mdEditor.selectionEnd
   mdEditor.value=mdEditor.value.substring(0,s)+txt+mdEditor.value.substring(e2)
   mdEditor.selectionStart=mdEditor.selectionEnd=s+txt.length
-  mdEditor.focus();setModified(true);scheduleRender()
+  mdEditor.focus()
+  recordMdHistory()
+  setModified(true)
+  scheduleRender()
 }
 function wrapMd(b,a){
   if(readOnlyDoc)return
@@ -830,7 +1001,10 @@ function wrapMd(b,a){
   mdEditor.value=mdEditor.value.substring(0,s)+b+sel+a+mdEditor.value.substring(e2)
   if(sel){mdEditor.selectionStart=s+b.length;mdEditor.selectionEnd=e2+b.length}
   else{mdEditor.selectionStart=mdEditor.selectionEnd=s+b.length}
-  mdEditor.focus();setModified(true);scheduleRender()
+  mdEditor.focus()
+  recordMdHistory()
+  setModified(true)
+  scheduleRender()
 }
 function prefixMd(prefix){
   if(readOnlyDoc)return
@@ -839,7 +1013,10 @@ function prefixMd(prefix){
   const line=v.substring(ls,end)
   if(line.startsWith(prefix)){mdEditor.value=v.substring(0,ls)+line.substring(prefix.length)+v.substring(end);mdEditor.selectionStart=mdEditor.selectionEnd=Math.max(ls,pos-prefix.length)}
   else{mdEditor.value=v.substring(0,ls)+prefix+line+v.substring(end);mdEditor.selectionStart=mdEditor.selectionEnd=pos+prefix.length}
-  mdEditor.focus();setModified(true);scheduleRender()
+  mdEditor.focus()
+  recordMdHistory()
+  setModified(true)
+  scheduleRender()
 }
 
 // ════ 对话框 ════════════════════════════════════════════════
@@ -975,7 +1152,7 @@ function extendRichTable (table, addRows, addCols) {
         td.textContent = '内容'
         tr.appendChild(td)
       }
-      table.appendChild(tr)
+      tableBodyEl(table).appendChild(tr)
     }
   }
   if (addCols > 0) {
@@ -990,6 +1167,7 @@ function extendRichTable (table, addRows, addCols) {
       }
     })
   }
+  recordRichHistory()
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -1019,27 +1197,68 @@ function extendMdTable (info, addRows, addCols) {
   lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
   mdEditor.value = lines.join('\n')
   mdEditor.focus()
+  recordMdHistory()
   setModified(true)
   scheduleRender()
   updateStatus()
 }
 
-function getRichTableCellContext () {
-  const sel = window.getSelection()
-  if (!sel || !sel.rangeCount) return null
-  let node = sel.anchorNode
-  if (node && node.nodeType === 3) node = node.parentElement
+function tableBodyEl (table) {
+  return table.querySelector('tbody') || table
+}
+
+function tableRowsList (table) {
+  const body = tableBodyEl(table)
+  return [...body.querySelectorAll(':scope > tr')]
+}
+
+function getRichTableCellContextFromNode (startNode) {
+  let node = startNode
+  if (!node) return null
+  if (node.nodeType === 3) node = node.parentElement
   if (!node || !node.closest) return null
   const cell = node.closest('td, th')
-  if (!cell) return null
+  if (!cell || !richEditor.contains(cell)) return null
   const table = cell.closest('table')
-  if (!table) return null
+  if (!table || !richEditor.contains(table)) return null
   const tr = cell.closest('tr')
-  const rows = [...table.querySelectorAll('tr')]
+  const rows = tableRowsList(table)
   const rowIndex = rows.indexOf(tr)
+  if (rowIndex < 0) return null
   const cells = [...tr.querySelectorAll('th, td')]
   const colIndex = cells.indexOf(cell)
   return { table, cell, tr, rowIndex, colIndex, colCount: cells.length }
+}
+
+function getRichTableCellContext () {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return getRichTableCellContextFromNode(sel.anchorNode)
+  return getRichTableCellContextFromNode(sel.anchorNode)
+}
+
+function focusRichTableCell (table, rowIndex, colIndex = 0) {
+  const rows = tableRowsList(table)
+  const row = rows[rowIndex]
+  if (!row) return false
+  const cells = [...row.querySelectorAll('th, td')]
+  const cell = cells[Math.min(Math.max(0, colIndex), cells.length - 1)]
+  if (!cell) return false
+  richEditor.focus()
+  const range = document.createRange()
+  range.selectNodeContents(cell)
+  range.collapse(true)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+  return true
+}
+
+function tryExecTableCmd (cmd, value) {
+  try {
+    return document.execCommand(cmd, false, value != null ? value : undefined)
+  } catch (_) {
+    return false
+  }
 }
 
 function richTableColCount (table) {
@@ -1059,24 +1278,36 @@ function richMakeCell (isHeader, label) {
 }
 
 function richTableInsertRow (table, rowIndex, where) {
+  const rows = tableRowsList(table)
+  if (!rows.length) return
+  rowIndex = Math.min(Math.max(0, rowIndex), rows.length - 1)
+  if (focusRichTableCell(table, rowIndex, 0)) {
+    const arg = where === 'before' ? 'above' : 'below'
+    if (tryExecTableCmd('insertRow', arg) || (where === 'below' && tryExecTableCmd('insertRow'))) {
+      setModified(true)
+      scheduleRender()
+      updateStatus()
+      queueMicrotask(() => recordRichHistory())
+      return
+    }
+  }
   const colCount = richTableColCount(table)
   if (!colCount) return
   const tr = document.createElement('tr')
-  const headerRow = table.querySelector('tr')
-  const isHeaderTable = headerRow && headerRow.querySelector('th')
-  for (let c = 0; c < colCount; c++) {
-    tr.appendChild(richMakeCell(false, '内容'))
-  }
-  const rows = [...table.querySelectorAll('tr')]
+  for (let c = 0; c < colCount; c++) tr.appendChild(richMakeCell(false, '内容'))
+  const body = tableBodyEl(table)
   const ref = rows[rowIndex]
-  if (!ref) table.appendChild(tr)
-  else if (where === 'before') table.insertBefore(tr, ref)
+  if (!ref) body.appendChild(tr)
+  else if (where === 'before') body.insertBefore(tr, ref)
   else {
     const next = ref.nextElementSibling
-    if (next) table.insertBefore(tr, next)
-    else table.appendChild(tr)
+    if (next) body.insertBefore(tr, next)
+    else body.appendChild(tr)
   }
-  setModified(true); scheduleRender(); updateStatus()
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function richTableInsertCol (table, colIndex, where) {
@@ -1093,14 +1324,28 @@ function richTableInsertCol (table, colIndex, where) {
       else tr.appendChild(cell)
     }
   })
-  setModified(true); scheduleRender(); updateStatus()
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function richTableDeleteRow (table, rowIndex) {
-  const rows = table.querySelectorAll('tr')
+  const rows = tableRowsList(table)
   if (rows.length <= 1) return
+  rowIndex = Math.min(Math.max(0, rowIndex), rows.length - 1)
+  if (focusRichTableCell(table, rowIndex, 0) && tryExecTableCmd('deleteRow')) {
+    setModified(true)
+    scheduleRender()
+    updateStatus()
+    queueMicrotask(() => recordRichHistory())
+    return
+  }
   rows[rowIndex]?.remove()
-  setModified(true); scheduleRender(); updateStatus()
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function richTableDeleteCol (table, colIndex) {
@@ -1110,12 +1355,18 @@ function richTableDeleteCol (table, colIndex) {
     const cells = tr.querySelectorAll('th, td')
     if (cells[colIndex]) cells[colIndex].remove()
   })
-  setModified(true); scheduleRender(); updateStatus()
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function richTableDelete (table) {
   table.remove()
-  setModified(true); scheduleRender(); updateStatus()
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function mdIsSeparatorLine (line) {
@@ -1131,10 +1382,13 @@ function mdJoinRow (cells) {
 }
 
 function mdTableApplyBlock (info, block) {
-  const lines = mdEditor.value.split('\n')
-  lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
-  mdEditor.value = lines.join('\n')
+  const text = block.join('\n')
+  const v = mdEditor.value
+  mdEditor.value = v.substring(0, info.startChar) + text + v.substring(info.endChar)
+  const pos = info.startChar + text.length
   mdEditor.focus()
+  mdEditor.setSelectionRange(pos, pos)
+  recordMdHistory()
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -1178,10 +1432,13 @@ function mdTableInsertRow (ctx, where) {
   const block = [...ctx.info.block]
   const colCount = countMdTableCols(block[0])
   const newLine = mdJoinRow(Array(colCount).fill('内容'))
-  let idx = ctx.rowLineIdx
-  if (mdIsSeparatorLine(block[idx])) idx++
-  if (where === 'after') idx++
-  block.splice(idx, 0, newLine)
+  let insertAt = ctx.rowLineIdx
+  if (mdIsSeparatorLine(block[insertAt])) {
+    insertAt = where === 'before' ? insertAt : insertAt + 1
+  } else if (where === 'after') {
+    insertAt++
+  }
+  block.splice(insertAt, 0, newLine)
   mdTableApplyBlock(ctx.info, block)
 }
 
@@ -1222,12 +1479,7 @@ function mdTableDeleteCol (ctx) {
 }
 
 function mdTableDelete (info) {
-  const lines = mdEditor.value.split('\n')
-  lines.splice(info.startLine, info.endLine - info.startLine + 1)
-  mdEditor.value = lines.join('\n')
-  setModified(true)
-  scheduleRender()
-  updateStatus()
+  mdTableApplyBlock(info, [])
 }
 
 function insertRichTable(rows,cols,header){
@@ -1291,6 +1543,7 @@ function insertRichTable(rows,cols,header){
     while(tmp.firstChild) richEditor.appendChild(tmp.firstChild)
   }
 
+  recordRichHistory()
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -1331,6 +1584,9 @@ $('link-ok').onclick=()=>{
       sel.addRange(_savedLinkRange)
     }
     document.execCommand('insertHTML',false,`<a href="${url}">${txt||url}</a>`)
+    recordRichHistory()
+    setModified(true)
+    scheduleRender()
   } else {
     insertMd(`[${txt||url}](${url})`)
   }
@@ -1372,13 +1628,19 @@ function replaceOne(){
   if(!findMatches.length)return
   const i=findMatches[findIdx]
   mdEditor.value=mdEditor.value.substring(0,i)+replaceInput.value+mdEditor.value.substring(i+findInput.value.length)
-  setModified(true);scheduleRender();doFind()
+  recordMdHistory()
+  setModified(true)
+  scheduleRender()
+  doFind()
 }
 function replaceAll(){
   if(readOnlyDoc)return
   if(!findInput.value)return
   mdEditor.value=mdEditor.value.replace(new RegExp(escRe(findInput.value),'g'),replaceInput.value)
-  setModified(true);scheduleRender();doFind()
+  recordMdHistory()
+  setModified(true)
+  scheduleRender()
+  doFind()
 }
 function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
 
@@ -1407,24 +1669,18 @@ function setupResizer(){
 
 function execEditorUndo () {
   if (editMode === 'preview') return
-  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
-    mdEditor.focus()
-    document.execCommand('undo')
-    return
-  }
-  richEditor.focus()
-  document.execCommand('undo')
+  if (!undoEditorHistory()) return
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function execEditorRedo () {
   if (editMode === 'preview') return
-  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
-    mdEditor.focus()
-    document.execCommand('redo')
-    return
-  }
-  richEditor.focus()
-  document.execCommand('redo')
+  if (!redoEditorHistory()) return
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 // ════ 键盘 ══════════════════════════════════════════════════
@@ -2833,8 +3089,10 @@ async function insertMarkdownImageAtCursor(){
   img.setAttribute('data-md-src',r.mdRel)
   document.execCommand('insertHTML',false,img.outerHTML)
   _lastSrc='wysiwyg'
+  recordRichHistory()
   setModified(true)
-  scheduleRender();updateStatus()
+  scheduleRender()
+  updateStatus()
 }
 
 // ════ 面板 ══════════════════════════════════════════════════

@@ -134,7 +134,7 @@ function setupContextMenu () {
       let node = target
       if (node.nodeType === 3) node = node.parentElement
       if (!node) return { zone: 'editor', mode: 'rich', kind: 'empty' }
-      const tCtx = getRichTableCellContext()
+      const tCtx = getRichTableCellContextFromNode(node) || getRichTableCellContext()
       if (tCtx) return { zone: 'editor', mode: 'rich', kind: 'table', richTable: tCtx }
       const img = node.closest && node.closest('img')
       if (img && richEditor.contains(img)) {
@@ -358,11 +358,14 @@ function setupContextMenu () {
     else if (c.kind === 'table') {
       if (c.mode === 'rich' && c.richTable) {
         const t = c.richTable
-        if (action === 'tbl-row-above') richTableInsertRow(t.table, t.rowIndex, 'before')
-        else if (action === 'tbl-row-below') richTableInsertRow(t.table, t.rowIndex, 'after')
+        if (!t.table || !t.table.isConnected) return
+        const rows = typeof tableRowsList === 'function' ? tableRowsList(t.table) : []
+        const rowIndex = rows.length ? Math.min(t.rowIndex, rows.length - 1) : t.rowIndex
+        if (action === 'tbl-row-above') richTableInsertRow(t.table, rowIndex, 'before')
+        else if (action === 'tbl-row-below') richTableInsertRow(t.table, rowIndex, 'after')
         else if (action === 'tbl-col-left') richTableInsertCol(t.table, t.colIndex, 'before')
         else if (action === 'tbl-col-right') richTableInsertCol(t.table, t.colIndex, 'after')
-        else if (action === 'tbl-del-row') richTableDeleteRow(t.table, t.rowIndex)
+        else if (action === 'tbl-del-row') richTableDeleteRow(t.table, rowIndex)
         else if (action === 'tbl-del-col') richTableDeleteCol(t.table, t.colIndex)
         else if (action === 'tbl-del-table') richTableDelete(t.table)
       } else if (c.mdTable) {
@@ -392,6 +395,7 @@ function setupContextMenu () {
       else if (action === 'img-delete') {
         if (c.imgEl) {
           c.imgEl.remove()
+          recordRichHistory()
           setModified(true)
           scheduleRender()
         } else if (isMdMode()) {
@@ -400,6 +404,7 @@ function setupContextMenu () {
           const le = v.indexOf('\n', mdEditor.selectionStart)
           const end = le === -1 ? v.length : le
           mdEditor.value = v.substring(0, ls) + v.substring(end + (le === -1 ? 0 : 1))
+          recordMdHistory()
           setModified(true)
           scheduleRender()
         }
@@ -425,6 +430,7 @@ function setupContextMenu () {
           const t = c.linkEl.textContent
           const tx = document.createTextNode(t)
           c.linkEl.replaceWith(tx)
+          recordRichHistory()
           setModified(true)
           scheduleRender()
         } else if (isMdMode()) {
@@ -440,6 +446,7 @@ function setupContextMenu () {
       else if (action === 'code-delete') {
         if (c.preEl) {
           c.preEl.remove()
+          recordRichHistory()
           setModified(true)
           scheduleRender()
         }
