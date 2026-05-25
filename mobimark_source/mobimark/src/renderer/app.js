@@ -93,12 +93,16 @@ async function init() {
   setupXhsStyleDialog()
   setupWorkspaceSidebar()
   setupKeyboard()
+  setupContextMenu()
   setupMenu()
   await syncWorkspaceHint()
   await refreshWorkspaceTree()
   await loadRecentFiles()
   setMode('wysiwyg')
-  window.mobiAPI.onWinState(s=>$('btn-maximize').textContent=s==='maximized'?'❐':'□')
+  window.mobiAPI.onWinState(applyWinState)
+  if (window.mobiAPI.winGetState) {
+    try { applyWinState(await window.mobiAPI.winGetState()) } catch (_) {}
+  }
   // 恢复上次内容（如有）
   if (cfg.pendingContent) {
     mdEditor.value = cfg.pendingContent
@@ -486,8 +490,6 @@ function setupRichEditor(){
         case 'i':e.preventDefault();document.execCommand('italic');return
         case 'u':e.preventDefault();document.execCommand('underline');return
         case 's':e.preventDefault();e.shiftKey?saveFileAs():saveFile();return
-        case 'z':if(!e.shiftKey){e.preventDefault();document.execCommand('undo')}return
-        case 'y':e.preventDefault();document.execCommand('redo');return
         case 'f':e.preventDefault();showFindBar();return
         case 'n':e.preventDefault();newFile();return
         case 'o':e.preventDefault();openFile();return
@@ -844,30 +846,405 @@ function prefixMd(prefix){
 // 保存打开对话框时的光标位置
 let _savedRange = null
 let _savedMdPos = {start:0, end:0}
+/** 光标在表格内时为扩展模式：{ kind:'rich', table } 或 { kind:'md', info } */
+let _tableExtendCtx = null
+
+function applyWinState (s) {
+  const btn = $('btn-maximize')
+  if (!btn) return
+  const max = s === 'maximized'
+  btn.textContent = max ? '❐' : '□'
+  btn.title = max ? '还原窗口' : '最大化'
+}
+
+function getRichTableFromSelection () {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return null
+  let node = sel.anchorNode
+  if (node && node.nodeType === 3) node = node.parentElement
+  if (!node || !node.closest) return null
+  const cell = node.closest('td, th')
+  if (!cell) return null
+  return cell.closest('table')
+}
+
+function isMdTableLine (line) {
+  return /^\s*\|.+\|\s*$/.test((line || '').trim())
+}
+
+function countMdTableCols (line) {
+  return line.trim().split('|').filter(c => c.trim() !== '').length
+}
+
+function findMdTableAt (pos, text) {
+  const lines = text.split('\n')
+  let lineIdx = 0
+  let acc = 0
+  for (let i = 0; i < lines.length; i++) {
+    const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0)
+    if (pos <= acc + lineLen || i === lines.length - 1) {
+      lineIdx = i
+      break
+    }
+    acc += lineLen
+  }
+  if (!isMdTableLine(lines[lineIdx])) return null
+  let s = lineIdx
+  let e = lineIdx
+  while (s > 0 && isMdTableLine(lines[s - 1])) s--
+  while (e < lines.length - 1 && isMdTableLine(lines[e + 1])) e++
+  const block = lines.slice(s, e + 1)
+  if (block.length < 2) return null
+  const startChar = s === 0 ? 0 : lines.slice(0, s).join('\n').length + 1
+  const endChar = startChar + block.join('\n').length
+  return { startLine: s, endLine: e, block, startChar, endChar }
+}
+
+function updateTableDialogUi () {
+  const extend = !!_tableExtendCtx
+  const title = $('table-dialog-title')
+  const hint = $('table-dialog-hint')
+  const headerRow = $('table-header-row')
+  const okBtn = $('table-ok')
+  const rowsIn = $('table-rows')
+  const colsIn = $('table-cols')
+  if (extend) {
+    if (title) title.textContent = '扩展表格'
+    if (hint) {
+      hint.style.display = 'block'
+      hint.textContent = '在光标所在表格末尾追加行、右侧追加列（不会在单元格内嵌套新表）。'
+    }
+    if (headerRow) headerRow.style.display = 'none'
+    if ($('table-rows-label')) $('table-rows-label').textContent = '新增行数'
+    if ($('table-cols-label')) $('table-cols-label').textContent = '新增列数'
+    if (okBtn) okBtn.textContent = '添加'
+    if (rowsIn) { rowsIn.value = '1'; rowsIn.min = '0' }
+    if (colsIn) { colsIn.value = '1'; colsIn.min = '0' }
+  } else {
+    if (title) title.textContent = '插入表格'
+    if (hint) hint.style.display = 'none'
+    if (headerRow) headerRow.style.display = ''
+    if ($('table-rows-label')) $('table-rows-label').textContent = '行数'
+    if ($('table-cols-label')) $('table-cols-label').textContent = '列数'
+    if (okBtn) okBtn.textContent = '插入'
+    if (rowsIn) { rowsIn.value = '3'; rowsIn.min = '1' }
+    if (colsIn) { colsIn.value = '3'; colsIn.min = '1' }
+  }
+}
 
 function showTableDialog(){
-  // 打开对话框前保存光标
-  if(editMode==='wysiwyg'){
+  _tableExtendCtx = null
+  if (readOnlyDoc) return
+  // 工具栏：仅插入新表（扩展行列请用表内右键）
+  if (editMode === 'wysiwyg' || (editMode === 'split' && _lastSrc === 'wysiwyg')) {
     const sel = window.getSelection()
     _savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null
   } else {
-    _savedMdPos = {start: mdEditor.selectionStart, end: mdEditor.selectionEnd}
+    _savedMdPos = { start: mdEditor.selectionStart, end: mdEditor.selectionEnd }
   }
+  updateTableDialogUi()
   $('table-dialog').style.display='flex'
   $('table-rows').focus()
 }
 $('table-cancel').onclick=()=>$('table-dialog').style.display='none'
 $('table-ok').onclick=()=>{
-  const rows=parseInt($('table-rows').value)||3
-  const cols=parseInt($('table-cols').value)||3
+  const rows=parseInt($('table-rows').value, 10) || 3
+  const cols=parseInt($('table-cols').value, 10) || 3
   const header=$('table-header').checked
   $('table-dialog').style.display='none'
-  if(editMode==='wysiwyg') insertRichTable(rows,cols,header)
-  else insertMdTable(rows,cols,header)
+  const insRows = Math.max(1, rows)
+  const insCols = Math.max(1, cols)
+  if (editMode === 'wysiwyg' || (editMode === 'split' && _lastSrc === 'wysiwyg')) insertRichTable(insRows, insCols, header)
+  else insertMdTable(insRows, insCols, header)
 }
 $('table-dialog').onclick=e=>{if(e.target===$('table-dialog'))$('table-dialog').style.display='none'}
 
+function extendRichTable (table, addRows, addCols) {
+  if (!table) return
+  let colCount = 0
+  table.querySelectorAll('tr').forEach(tr => {
+    const n = tr.querySelectorAll('th, td').length
+    if (n > colCount) colCount = n
+  })
+  if (addRows > 0 && colCount > 0) {
+    for (let r = 0; r < addRows; r++) {
+      const tr = document.createElement('tr')
+      for (let c = 0; c < colCount; c++) {
+        const td = document.createElement('td')
+        td.contentEditable = 'true'
+        td.textContent = '内容'
+        tr.appendChild(td)
+      }
+      table.appendChild(tr)
+    }
+  }
+  if (addCols > 0) {
+    table.querySelectorAll('tr').forEach((tr, ri) => {
+      const isHeaderRow = ri === 0 && tr.querySelector('th')
+      const existing = tr.querySelectorAll('th, td').length
+      for (let c = 0; c < addCols; c++) {
+        const cell = document.createElement(isHeaderRow ? 'th' : 'td')
+        cell.contentEditable = 'true'
+        cell.textContent = isHeaderRow ? `列 ${existing + c + 1}` : '内容'
+        tr.appendChild(cell)
+      }
+    })
+  }
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+}
+
+function extendMdTable (info, addRows, addCols) {
+  if (!info) return
+  const lines = mdEditor.value.split('\n')
+  const block = [...info.block]
+  let colCount = countMdTableCols(block[0])
+  if (addCols > 0) {
+    block.forEach((line, i) => {
+      const parts = line.trim().split('|')
+      for (let c = 0; c < addCols; c++) {
+        const label = (i === 0 && !/^\s*\|[\s:]*-/.test(line)) ? `列 ${colCount + c + 1}` : '内容'
+        parts.splice(parts.length - 1, 0, ` ${label} `)
+      }
+      block[i] = parts.join('|')
+    })
+    colCount += addCols
+  }
+  if (addRows > 0) {
+    for (let r = 0; r < addRows; r++) {
+      block.push('| ' + Array(colCount).fill('内容').join(' | ') + ' |')
+    }
+  }
+  lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
+  mdEditor.value = lines.join('\n')
+  mdEditor.focus()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+}
+
+function getRichTableCellContext () {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return null
+  let node = sel.anchorNode
+  if (node && node.nodeType === 3) node = node.parentElement
+  if (!node || !node.closest) return null
+  const cell = node.closest('td, th')
+  if (!cell) return null
+  const table = cell.closest('table')
+  if (!table) return null
+  const tr = cell.closest('tr')
+  const rows = [...table.querySelectorAll('tr')]
+  const rowIndex = rows.indexOf(tr)
+  const cells = [...tr.querySelectorAll('th, td')]
+  const colIndex = cells.indexOf(cell)
+  return { table, cell, tr, rowIndex, colIndex, colCount: cells.length }
+}
+
+function richTableColCount (table) {
+  let n = 0
+  table.querySelectorAll('tr').forEach(tr => {
+    const c = tr.querySelectorAll('th, td').length
+    if (c > n) n = c
+  })
+  return n
+}
+
+function richMakeCell (isHeader, label) {
+  const el = document.createElement(isHeader ? 'th' : 'td')
+  el.contentEditable = 'true'
+  el.textContent = label
+  return el
+}
+
+function richTableInsertRow (table, rowIndex, where) {
+  const colCount = richTableColCount(table)
+  if (!colCount) return
+  const tr = document.createElement('tr')
+  const headerRow = table.querySelector('tr')
+  const isHeaderTable = headerRow && headerRow.querySelector('th')
+  for (let c = 0; c < colCount; c++) {
+    tr.appendChild(richMakeCell(false, '内容'))
+  }
+  const rows = [...table.querySelectorAll('tr')]
+  const ref = rows[rowIndex]
+  if (!ref) table.appendChild(tr)
+  else if (where === 'before') table.insertBefore(tr, ref)
+  else {
+    const next = ref.nextElementSibling
+    if (next) table.insertBefore(tr, next)
+    else table.appendChild(tr)
+  }
+  setModified(true); scheduleRender(); updateStatus()
+}
+
+function richTableInsertCol (table, colIndex, where) {
+  table.querySelectorAll('tr').forEach((tr, ri) => {
+    const cells = [...tr.querySelectorAll('th, td')]
+    const isHeader = ri === 0 && tr.querySelector('th')
+    const cell = richMakeCell(isHeader, isHeader ? `列 ${cells.length + 1}` : '内容')
+    const ref = cells[colIndex]
+    if (!ref) tr.appendChild(cell)
+    else if (where === 'before') tr.insertBefore(cell, ref)
+    else {
+      const next = ref.nextElementSibling
+      if (next) tr.insertBefore(cell, next)
+      else tr.appendChild(cell)
+    }
+  })
+  setModified(true); scheduleRender(); updateStatus()
+}
+
+function richTableDeleteRow (table, rowIndex) {
+  const rows = table.querySelectorAll('tr')
+  if (rows.length <= 1) return
+  rows[rowIndex]?.remove()
+  setModified(true); scheduleRender(); updateStatus()
+}
+
+function richTableDeleteCol (table, colIndex) {
+  const colCount = richTableColCount(table)
+  if (colCount <= 1) return
+  table.querySelectorAll('tr').forEach(tr => {
+    const cells = tr.querySelectorAll('th, td')
+    if (cells[colIndex]) cells[colIndex].remove()
+  })
+  setModified(true); scheduleRender(); updateStatus()
+}
+
+function richTableDelete (table) {
+  table.remove()
+  setModified(true); scheduleRender(); updateStatus()
+}
+
+function mdIsSeparatorLine (line) {
+  return /^\s*\|[\s|:-]+\|\s*$/.test((line || '').trim()) && /-/.test(line)
+}
+
+function mdRowCells (line) {
+  return line.trim().split('|').slice(1, -1).map(s => s.trim())
+}
+
+function mdJoinRow (cells) {
+  return '| ' + cells.join(' | ') + ' |'
+}
+
+function mdTableApplyBlock (info, block) {
+  const lines = mdEditor.value.split('\n')
+  lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
+  mdEditor.value = lines.join('\n')
+  mdEditor.focus()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+}
+
+function getMdTableCellContext (pos) {
+  const info = findMdTableAt(pos, mdEditor.value)
+  if (!info) return null
+  const lines = mdEditor.value.split('\n')
+  let lineIdx = 0
+  let acc = 0
+  for (let i = 0; i < lines.length; i++) {
+    const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0)
+    if (pos <= acc + lineLen || i === lines.length - 1) {
+      lineIdx = i
+      break
+    }
+    acc += lineLen
+  }
+  const blockLineIdx = lineIdx - info.startLine
+  if (blockLineIdx < 0 || blockLineIdx >= info.block.length) return null
+  const line = info.block[blockLineIdx]
+  let rowLineIdx = blockLineIdx
+  if (mdIsSeparatorLine(line)) rowLineIdx = Math.min(blockLineIdx + 1, info.block.length - 1)
+  const colCount = countMdTableCols(info.block[0])
+  const lineStart = lineIdx === 0 ? 0 : lines.slice(0, lineIdx).join('\n').length + 1
+  const colPos = Math.max(0, pos - lineStart)
+  const parts = (info.block[rowLineIdx] || info.block[0]).split('|')
+  let colIndex = 0
+  let cum = 0
+  for (let i = 1; i < parts.length - 1; i++) {
+    cum += parts[i].length + 1
+    colIndex = i - 1
+    if (colPos <= cum) break
+  }
+  colIndex = Math.min(Math.max(0, colIndex), colCount - 1)
+  return { info, blockLineIdx, rowLineIdx, colIndex, colCount }
+}
+
+function mdTableInsertRow (ctx, where) {
+  const block = [...ctx.info.block]
+  const colCount = countMdTableCols(block[0])
+  const newLine = mdJoinRow(Array(colCount).fill('内容'))
+  let idx = ctx.rowLineIdx
+  if (mdIsSeparatorLine(block[idx])) idx++
+  if (where === 'after') idx++
+  block.splice(idx, 0, newLine)
+  mdTableApplyBlock(ctx.info, block)
+}
+
+function mdTableInsertCol (ctx, where) {
+  const old = ctx.info.block
+  const baseCols = countMdTableCols(old[0])
+  const block = old.map((line, i) => {
+    if (mdIsSeparatorLine(line)) {
+      return mdJoinRow(Array(baseCols + 1).fill(':---'))
+    }
+    const cells = mdRowCells(line)
+    const label = (i === 0) ? `列 ${cells.length + 1}` : '内容'
+    const ins = where === 'before' ? ctx.colIndex : ctx.colIndex + 1
+    cells.splice(ins, 0, label)
+    return mdJoinRow(cells)
+  })
+  mdTableApplyBlock(ctx.info, block)
+}
+
+function mdTableDeleteRow (ctx) {
+  const block = [...ctx.info.block]
+  const dataRows = block.filter(l => !mdIsSeparatorLine(l))
+  if (dataRows.length <= 1) return
+  if (mdIsSeparatorLine(block[ctx.rowLineIdx])) return
+  block.splice(ctx.rowLineIdx, 1)
+  mdTableApplyBlock(ctx.info, block)
+}
+
+function mdTableDeleteCol (ctx) {
+  if (ctx.colCount <= 1) return
+  const block = ctx.info.block.map(line => {
+    const cells = mdRowCells(line)
+    if (cells.length <= 1) return line
+    cells.splice(ctx.colIndex, 1)
+    return mdJoinRow(cells)
+  })
+  mdTableApplyBlock(ctx.info, block)
+}
+
+function mdTableDelete (info) {
+  const lines = mdEditor.value.split('\n')
+  lines.splice(info.startLine, info.endLine - info.startLine + 1)
+  mdEditor.value = lines.join('\n')
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+}
+
 function insertRichTable(rows,cols,header){
+  const inTable = getRichTableFromSelection()
+  if (inTable) {
+    const p = document.createElement('p')
+    p.innerHTML = '<br>'
+    if (inTable.nextSibling) inTable.parentNode.insertBefore(p, inTable.nextSibling)
+    else inTable.parentNode.appendChild(p)
+    const sel = window.getSelection()
+    const r = document.createRange()
+    r.setStart(p, 0)
+    r.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(r)
+    _savedRange = r.cloneRange()
+  }
   // 构建表格 HTML 字符串，用 innerHTML 方式更可靠
   let html = '<table>'
   if(header){
@@ -1028,11 +1405,54 @@ function setupResizer(){
   })
 }
 
+function execEditorUndo () {
+  if (editMode === 'preview') return
+  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
+    mdEditor.focus()
+    document.execCommand('undo')
+    return
+  }
+  richEditor.focus()
+  document.execCommand('undo')
+}
+
+function execEditorRedo () {
+  if (editMode === 'preview') return
+  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
+    mdEditor.focus()
+    document.execCommand('redo')
+    return
+  }
+  richEditor.focus()
+  document.execCommand('redo')
+}
+
 // ════ 键盘 ══════════════════════════════════════════════════
 function setupKeyboard(){
   document.addEventListener('keydown',e=>{
     const acc=e.metaKey||e.ctrlKey
-    if(acc&&e.shiftKey&&e.key.toLowerCase()==='s'){e.preventDefault();saveFileAs();return}
+    const key=e.key.toLowerCase()
+    const inDialog=$('table-dialog').style.display!=='none'||$('link-dialog').style.display!=='none'||$('prompt-dialog').style.display!=='none'
+    const inFind=findBar.style.display!=='none'&&e.target&&findBar.contains(e.target)
+    if(acc&&!inDialog&&!inFind&&editMode!=='preview'){
+      switch(key){
+        case 's':
+          e.preventDefault()
+          if(e.shiftKey) void saveFileAs()
+          else void saveFile()
+          return
+        case 'z':
+          e.preventDefault()
+          if(e.shiftKey) execEditorRedo()
+          else execEditorUndo()
+          return
+        case 'y':
+          e.preventDefault()
+          execEditorRedo()
+          return
+      }
+    }
+    if(acc&&e.shiftKey&&key==='s'){e.preventDefault();saveFileAs();return}
     if(e.key==='Escape'){
       if(findBar.style.display!=='none'){hideFindBar();return}
       if($('table-dialog').style.display!=='none'){$('table-dialog').style.display='none';return}
@@ -2273,6 +2693,9 @@ async function appendTreeLevel(rel,depth,parentEl){
     if(e.isDirectory){
       const row=document.createElement('div')
       row.className='tree-row tree-folder'
+      row.dataset.relPath=e.relPath
+      row.dataset.isDir='1'
+      row.dataset.name=e.name
       row.style.paddingLeft=(6+depth*12)+'px'
       const chev=document.createElement('button')
       chev.type='button'
@@ -2300,6 +2723,9 @@ async function appendTreeLevel(rel,depth,parentEl){
     }else{
       const row=document.createElement('div')
       row.className='tree-row tree-file'+(e.relPath===activeRel?' tree-row-active':'')
+      row.dataset.relPath=e.relPath
+      row.dataset.isDir='0'
+      row.dataset.name=e.name
       row.style.paddingLeft=(6+depth*12)+'px'
       const sp=document.createElement('span')
       sp.className='tree-chevron-spacer'

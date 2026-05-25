@@ -709,9 +709,9 @@ body {
  * #bg-layer(0) + #glass-overlay(1) 时，主界面必须高于遮罩层。
  * 仅 .theme-glass 曾抬升；从毛玻璃切到浅色/暗黑后 overlay 上仍有全屏 blur，未抬升的 UI 会被压在下面 → 只见壁纸、按钮不见且点不到。
  */
-body.theme-light > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog),
-body.theme-dark > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog),
-body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog) {
+body.theme-light > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu),
+body.theme-dark > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu),
+body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu) {
   position: relative;
   z-index: 2;
 }
@@ -2176,6 +2176,122 @@ select{
   background:var(--bg-hover);color:var(--t2);cursor:pointer;transition:background .1s;
 }
 .dialog-btns button:hover{background:var(--bg-active);color:var(--t1)}
+
+/* ════ 右键上下文菜单（跟随 body 主题变量，保证对比度）════════ */
+#ctx-menu, #ctx-submenu {
+  position: fixed;
+  z-index: 220;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 6px 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--bd);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.14);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+.ctx-submenu { z-index: 221; }
+
+.theme-light #ctx-menu, .theme-light #ctx-submenu {
+  background: #ffffff;
+  border-color: rgba(53, 97, 144, 0.16);
+  box-shadow: 0 10px 32px rgba(53, 97, 144, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  color: #1e2c38;
+}
+
+.theme-dark #ctx-menu, .theme-dark #ctx-submenu {
+  background: #2a2826;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  color: #ece9e3;
+}
+
+.theme-glass #ctx-menu, .theme-glass #ctx-submenu {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  color: var(--t1);
+}
+
+.theme-glass.glass-has-bg #ctx-menu, .theme-glass.glass-has-bg #ctx-submenu {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(53, 97, 144, 0.22);
+  color: var(--t1);
+}
+
+/* 深色壁纸 + 浅色字主题：菜单用深色底，字用 --t1 浅色 */
+.theme-glass.glass-has-bg.glass-onwall-light-text #ctx-menu,
+.theme-glass.glass-has-bg.glass-onwall-light-text #ctx-submenu {
+  background: rgba(22, 26, 36, 0.94);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  color: #f1f5f9;
+}
+
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  font: inherit;
+  font-weight: 500;
+}
+.ctx-menu-item:hover:not(.disabled):not(:disabled) {
+  background: var(--bg-hover);
+  color: inherit;
+}
+.theme-light .ctx-menu-item:hover:not(.disabled):not(:disabled) {
+  background: #e8eef6;
+  color: #15202e;
+}
+.theme-dark .ctx-menu-item:hover:not(.disabled):not(:disabled) {
+  background: rgba(139, 126, 110, 0.22);
+  color: #fafaf9;
+}
+.theme-glass.glass-has-bg.glass-onwall-light-text .ctx-menu-item:hover:not(.disabled):not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+.ctx-menu-item.disabled, .ctx-menu-item:disabled {
+  opacity: 0.42;
+  pointer-events: none;
+}
+.ctx-menu-label { flex: 1; color: inherit; }
+.ctx-menu-shortcut {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--t2);
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+.theme-light .ctx-menu-shortcut { color: #5a6d82; }
+.theme-dark .ctx-menu-shortcut { color: #a8a29e; }
+.theme-glass.glass-has-bg.glass-onwall-light-text .ctx-menu-shortcut { color: #94a3b8; }
+.ctx-menu-item.has-sub::after {
+  content: none;
+}
+.ctx-menu-sep {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--bd);
+}
+.theme-light .ctx-menu-sep { background: rgba(53, 97, 144, 0.12); }
+.theme-dark .ctx-menu-sep { background: rgba(255, 255, 255, 0.08); }
+.theme-glass.glass-has-bg.glass-onwall-light-text .ctx-menu-sep {
+  background: rgba(255, 255, 255, 0.12);
+}
 .primary-btn{
   background:linear-gradient(180deg,var(--ref-primary) 0%,var(--ref-primary-2) 100%)!important;
   color:#fff!important;border-color:transparent!important;

@@ -2,6 +2,7 @@
 **/node_modules/
 **/dist/
 **/dist-build/
+**/dist-build-new/
 **/dist-new/
 **/dist2/
 **/dist3/

@@ -50,7 +50,7 @@
   </div>
   <div id="titlebar-controls">
     <button type="button" class="tbtn" id="btn-minimize" title="最小化">─</button>
-    <button type="button" class="tbtn" id="btn-maximize" title="最大化">□</button>
+    <button type="button" class="tbtn" id="btn-maximize" title="最大化（再次点击还原）">□</button>
     <button type="button" class="tbtn danger" id="btn-close" title="关闭">✕</button>
   </div>
 </div>
@@ -67,7 +67,7 @@
     <div id="mode-actions-scroll">
       <button type="button" class="action-btn" id="btn-new">新建</button>
       <button type="button" class="action-btn" id="btn-open">打开</button>
-      <button type="button" class="action-btn" id="btn-save">保存</button>
+      <button type="button" class="action-btn" id="btn-save" title="保存（Ctrl+S）">保存</button>
       <button type="button" class="action-btn" id="btn-save-as" title="另存为（Ctrl+Shift+S）">另存为</button>
       <div class="tool-sep"></div>
       <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
@@ -239,10 +239,11 @@
 <!-- 表格对话框 -->
 <div id="table-dialog" class="dialog" style="display:none">
   <div class="dialog-box">
-    <div class="dialog-title">插入表格</div>
-    <div class="dialog-row"><label>行数</label><input type="number" id="table-rows" value="3" min="1" max="20"></div>
-    <div class="dialog-row"><label>列数</label><input type="number" id="table-cols" value="3" min="1" max="10"></div>
-    <div class="dialog-row"><label>含表头</label><input type="checkbox" id="table-header" checked></div>
+    <div class="dialog-title" id="table-dialog-title">插入表格</div>
+    <p class="dialog-hint" id="table-dialog-hint" style="display:none;margin:0 0 10px;font-size:12px;opacity:.72"></p>
+    <div class="dialog-row"><label id="table-rows-label">行数</label><input type="number" id="table-rows" value="3" min="1" max="20"></div>
+    <div class="dialog-row"><label id="table-cols-label">列数</label><input type="number" id="table-cols" value="3" min="1" max="10"></div>
+    <div class="dialog-row" id="table-header-row"><label>含表头</label><input type="checkbox" id="table-header" checked></div>
     <div class="dialog-btns">
       <button id="table-cancel">取消</button>
       <button id="table-ok" class="primary-btn">插入</button>
@@ -413,7 +414,11 @@
 <!-- 无边框窗口：系统阴影常无效；置顶描边 + 外扩阴影强化与其它窗口的边界 -->
 <div id="window-chrome-edge" aria-hidden="true"></div>
 
+<div id="ctx-menu" class="ctx-menu" style="display:none" role="menu" aria-hidden="true"></div>
+<div id="ctx-submenu" class="ctx-menu ctx-submenu" style="display:none" role="menu" aria-hidden="true"></div>
+
 <script src="../../node_modules/html2canvas/dist/html2canvas.min.js"></script>
 <script src="app.js"></script>
+<script src="context-menu.js"></script>
 </body>
 </html>

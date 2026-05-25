@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   syncMacVibrancy: (theme) => ipcRenderer.invoke('sync-mac-vibrancy', theme),
   winMinimize: () => ipcRenderer.send('win-minimize'),
   winMaximize: () => ipcRenderer.send('win-maximize'),
+  winGetState: () => ipcRenderer.invoke('win-get-state'),
   winClose: () => ipcRenderer.send('win-close'),
   onWinState: (cb) => ipcRenderer.on('win-state', (_, s) => cb(s)),
   onOpenFilePath: (cb) => ipcRenderer.on('open-file-path', (_, p) => cb(p)),

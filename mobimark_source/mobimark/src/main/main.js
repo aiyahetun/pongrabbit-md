@@ -1,6 +1,6 @@
 'use strict'
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -31,6 +31,9 @@ const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'])
 const IMAGE_EXT_IMPORT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'])
 
 let mainWindow = null
+/** Windows 无边框透明窗口下 isMaximized() 不可靠，用手动铺满工作区实现最大化切换 */
+let winCustomMaximized = false
+let winRestoreBounds = null
 let pendingInitialPath = null
 let config = defaultConfig()
 
@@ -309,6 +312,7 @@ function createWindow () {
     if (!win.isDestroyed()) {
       shown = true
       win.show()
+      sendWinState(win)
     }
   })
   /* 极少数环境 ready-to-show 不触发，避免窗口永远隐藏 */
@@ -330,12 +334,30 @@ function createWindow () {
   })
   win.loadFile(path.join(__dirname, '../renderer/index.html'))
   win.on('resize', () => {
+    if (process.platform === 'win32' && winCustomMaximized) {
+      const area = screen.getDisplayMatching(win.getBounds()).workArea
+      const b = win.getBounds()
+      if (b.width !== area.width || b.height !== area.height || b.x !== area.x || b.y !== area.y) {
+        winCustomMaximized = false
+        winRestoreBounds = null
+        sendWinState(win)
+      }
+    }
     const [w, h] = win.getSize()
     config.windowBounds = { width: w, height: h }
     saveConfigDisk({ windowBounds: config.windowBounds })
   })
-  win.on('maximize', () => win.webContents.send('win-state', 'maximized'))
-  win.on('unmaximize', () => win.webContents.send('win-state', 'normal'))
+  win.on('maximize', () => sendWinState(win))
+  win.on('unmaximize', () => {
+    winCustomMaximized = false
+    winRestoreBounds = null
+    sendWinState(win)
+  })
+  win.on('restore', () => {
+    winCustomMaximized = false
+    winRestoreBounds = null
+    sendWinState(win)
+  })
   win.on('closed', () => { mainWindow = null })
   mainWindow = win
   const th = config.theme || 'light'
@@ -452,13 +474,55 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
+function sendWinState (win) {
+  if (!win || win.isDestroyed()) return
+  const maximized = process.platform === 'win32'
+    ? winCustomMaximized
+    : win.isMaximized()
+  win.webContents.send('win-state', maximized ? 'maximized' : 'normal')
+}
+
 ipcMain.on('win-minimize', () => mainWindow?.minimize())
 ipcMain.on('win-maximize', () => {
-  if (!mainWindow) return
-  mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+
+  if (process.platform === 'win32') {
+    if (winCustomMaximized) {
+      if (winRestoreBounds) win.setBounds(winRestoreBounds)
+      winCustomMaximized = false
+      winRestoreBounds = null
+      sendWinState(win)
+      return
+    }
+    winRestoreBounds = win.getBounds()
+    const area = screen.getDisplayMatching(winRestoreBounds).workArea
+    win.setBounds({ x: area.x, y: area.y, width: area.width, height: area.height })
+    winCustomMaximized = true
+    sendWinState(win)
+    return
+  }
+
+  if (win.isMaximized()) win.unmaximize()
+  else win.maximize()
+  setImmediate(() => sendWinState(win))
+})
+ipcMain.handle('win-get-state', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return 'normal'
+  if (process.platform === 'win32') return winCustomMaximized ? 'maximized' : 'normal'
+  return mainWindow.isMaximized() ? 'maximized' : 'normal'
 })
 ipcMain.on('win-close', () => mainWindow?.close())
-ipcMain.on('show-in-folder', (_, p) => { if (p) shell.showItemInFolder(p) })
+ipcMain.on('show-in-folder', (_, p) => {
+  if (!p) return
+  try {
+    const st = fs.statSync(p)
+    if (st.isDirectory()) shell.openPath(p)
+    else shell.showItemInFolder(p)
+  } catch (_) {
+    try { shell.showItemInFolder(p) } catch (e2) { console.warn('[show-in-folder]', e2.message) }
+  }
+})
 
 /** Cursor 调试会话 NDJSON：写入仓库根 `debug-45714f.log`（渲染进程 ingest fetch 可能不落盘） */
 function debugSessionLogFile () {
