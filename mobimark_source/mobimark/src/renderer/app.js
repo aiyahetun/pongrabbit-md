@@ -47,6 +47,7 @@ const READONLY_CODE_EXTS = new Set([
 let readOnlyDoc = false
 let editMode='wysiwyg'  // wysiwyg | markdown | preview | split
 let _lastSrc='wysiwyg' // last edited source
+let _editorSyncing=false
 let renderTimer=null
 let findMatches=[], findIdx=0, isResizing=false
 // Audio
@@ -431,67 +432,226 @@ function show(el){if(el)el.style.display=''}
 function hide(el){if(el)el.style.display='none'}
 function showFlex(el){if(el)el.style.display='flex'}
 
+/** Markdown 片段对应的可见纯文本（用于光标映射） */
+function stripMdToPlain (md) {
+  if (!md) return ''
+  if (!window.marked) return md
+  try {
+    const div = document.createElement('div')
+    div.innerHTML = window.marked.parse(md)
+    return div.innerText || div.textContent || ''
+  } catch (_) {
+    return md
+  }
+}
+
+function mdPlainLenAt (md, index) {
+  return stripMdToPlain(md.slice(0, Math.max(0, index))).length
+}
+
+function plainOffsetToMdIndex (md, plainOffset) {
+  if (!md || plainOffset <= 0) return 0
+  const fullLen = stripMdToPlain(md).length
+  if (plainOffset >= fullLen) return md.length
+  let lo = 0, hi = md.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (mdPlainLenAt(md, mid) < plainOffset) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+function captureEditorPlainOffset () {
+  if (document.activeElement === mdEditor) {
+    return mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+  }
+  if (richEditor.contains(document.activeElement) || document.activeElement === richEditor) {
+    return getRichCaretOffset()
+  }
+  if (_lastSrc === 'md') return mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+  return getRichCaretOffset()
+}
+
+function setMdCaretFromPlain (plainOffset) {
+  const mp = plainOffsetToMdIndex(mdEditor.value, plainOffset)
+  mdEditor.setSelectionRange(mp, mp)
+  scrollMdCaretIntoView()
+}
+
+function setBothCaretsFromPlain (plainOffset) {
+  setRichCaretOffset(plainOffset)
+  setMdCaretFromPlain(plainOffset)
+}
+
+function syncEditorsFromWysiwyg (plainOffset) {
+  if (_editorSyncing) return
+  _editorSyncing = true
+  const po = plainOffset != null ? plainOffset : getRichCaretOffset()
+  const mdScroll = mdEditor.scrollTop
+  const mdFocused = document.activeElement === mdEditor
+  mdEditor.value = richToMd()
+  const mp = plainOffsetToMdIndex(mdEditor.value, po)
+  mdEditor.setSelectionRange(mp, mp)
+  if (!mdFocused) mdEditor.scrollTop = mdScroll
+  _editorSyncing = false
+}
+
+function syncEditorsFromMd (plainOffset) {
+  if (_editorSyncing) return
+  _editorSyncing = true
+  const po = plainOffset != null ? plainOffset : mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+  const richScroll = richEditor.scrollTop
+  const richFocused = document.activeElement === richEditor
+  richEditor.innerHTML = md2html(mdEditor.value)
+  setRichCaretOffset(po)
+  if (!richFocused) richEditor.scrollTop = richScroll
+  _editorSyncing = false
+}
+
+function scrollMdCaretIntoView () {
+  const pos = mdEditor.selectionStart
+  const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
+  const before = mdEditor.value.slice(0, pos)
+  const line = (before.match(/\n/g) || []).length
+  const target = line * lineH - mdEditor.clientHeight / 2
+  mdEditor.scrollTop = Math.max(0, target)
+}
+
+function scrollRichCaretIntoView () {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return
+  let node = sel.getRangeAt(0).startContainer
+  if (node.nodeType === 3) node = node.parentElement
+  if (node && node.scrollIntoView) node.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+
+function updateModeToolbars (mode) {
+  if (mode === 'split') {
+    const mdF = document.activeElement === mdEditor
+    $('rich-toolbar').style.display = mdF ? 'none' : 'flex'
+    $('md-toolbar').style.display = mdF ? 'flex' : 'none'
+    return
+  }
+  $('rich-toolbar').style.display = mode === 'wysiwyg' ? 'flex' : 'none'
+  $('md-toolbar').style.display = mode === 'markdown' ? 'flex' : 'none'
+}
+
+function isRichFocused () {
+  const ae = document.activeElement
+  return ae === richEditor || (ae && richEditor.contains(ae))
+}
+
+function isMdFocused () {
+  return document.activeElement === mdEditor
+}
+
+async function pastePlainTextInRichEditor () {
+  if (readOnlyDoc) return
+  let text = ''
+  try {
+    text = await navigator.clipboard.readText()
+  } catch (_) {
+    document.execCommand('paste')
+    return
+  }
+  document.execCommand('insertText', false, text)
+  _lastSrc = 'wysiwyg'
+  recordRichHistory()
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+  if (editMode === 'split') syncEditorsFromWysiwyg()
+}
+
 function setMode(mode) {
   if (readOnlyDoc && mode !== 'markdown') mode = 'markdown'
-  editMode=mode
-  ;['wysiwyg','markdown','preview','split'].forEach(m=>
-    $('tab-'+m).classList.toggle('active',m===mode)
+  const prevMode = editMode
+  const plainBefore = captureEditorPlainOffset()
+  const focusMd = isMdFocused()
+  const focusRich = isRichFocused()
+
+  editMode = mode
+  body.classList.toggle('mode-split', mode === 'split')
+  ;['wysiwyg','markdown','preview','split'].forEach(m =>
+    $('tab-'+m).classList.toggle('active', m === mode)
   )
-  // 同步内容：从 wysiwyg → md，从 md → wysiwyg
-  if (mode==='markdown'&&_lastSrc==='wysiwyg') {
-    mdEditor.value=richToMd()
-    resetMdHistory()
-  }
-  if ((mode==='wysiwyg'||mode==='split'&&_lastSrc==='md')&&_lastSrc==='md') {
-    richEditor.innerHTML=md2html(mdEditor.value)
-    resetRichHistory()
+
+  if (mode === 'markdown') {
+    if (prevMode === 'wysiwyg' || prevMode === 'split' || _lastSrc === 'wysiwyg') {
+      syncEditorsFromWysiwyg(plainBefore)
+      resetMdHistory()
+    }
+  } else if (mode === 'wysiwyg') {
+    if (prevMode === 'markdown' || prevMode === 'split' || _lastSrc === 'md') {
+      syncEditorsFromMd(plainBefore)
+      resetRichHistory()
+    }
+  } else if (mode === 'split') {
+    if (_lastSrc === 'md') syncEditorsFromMd(plainBefore)
+    else syncEditorsFromWysiwyg(plainBefore)
+  } else if (mode === 'preview') {
+    if (_lastSrc === 'wysiwyg') syncEditorsFromWysiwyg(plainBefore)
+    else if (_lastSrc === 'md') syncEditorsFromMd(plainBefore)
   }
 
-  // 工具栏
-  $('rich-toolbar').style.display = mode==='wysiwyg'?'flex':'none'
-  $('md-toolbar').style.display   = mode==='markdown'?'flex':'none'
+  updateModeToolbars(mode)
 
-  // 面板
-  switch(mode) {
+  switch (mode) {
     case 'wysiwyg':
       showFlex(wysiwygPane); hide(mdPane); hide(previewPane); hide(resizerEl)
-      wysiwygPane.style.flex='1'; wysiwygPane.style.width=''
-      richEditor.focus(); break
+      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
+      richEditor.focus()
+      setRichCaretOffset(plainBefore)
+      scrollRichCaretIntoView()
+      break
     case 'markdown':
       hide(wysiwygPane); showFlex(mdPane); hide(previewPane); hide(resizerEl)
-      mdPane.style.flex='1'; mdPane.style.width=''
-      mdEditor.focus(); break
+      mdPane.style.flex = '1'; mdPane.style.width = ''
+      mdEditor.focus()
+      setMdCaretFromPlain(plainBefore)
+      break
     case 'preview':
       hide(wysiwygPane); hide(mdPane); showFlex(previewPane); hide(resizerEl)
-      previewPane.style.flex='1'; previewPane.style.width=''
-      renderPreview(); break
+      previewPane.style.flex = '1'; previewPane.style.width = ''
+      renderPreview()
+      break
     case 'split':
-      // 左侧：最后活跃的编辑器；右侧：预览
-      hide(wysiwygPane); hide(mdPane)
-      if(_lastSrc==='md'){
-        showFlex(mdPane); mdPane.style.flex='1'; mdPane.style.width=''
-        mdEditor.focus()
-      } else {
-        showFlex(wysiwygPane); wysiwygPane.style.flex='1'; wysiwygPane.style.width=''
-        richEditor.focus()
-      }
-      show(resizerEl)
-      showFlex(previewPane); previewPane.style.flex='1'; previewPane.style.width=''
-      renderPreview(); break
+      showFlex(wysiwygPane); showFlex(mdPane); hide(previewPane); show(resizerEl)
+      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
+      mdPane.style.flex = '1'; mdPane.style.width = ''
+      if (focusMd) mdEditor.focus()
+      else richEditor.focus()
+      setBothCaretsFromPlain(plainBefore)
+      if (!focusMd) scrollRichCaretIntoView()
+      break
   }
-  const names={wysiwyg:'可视化',markdown:'源码',preview:'预览',split:'分栏预览'}
-  $('status-mode').textContent=names[mode]||mode
+  const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
+  $('status-mode').textContent = names[mode] || mode
   updateStatus()
 }
 
 // ════ 富文本编辑器 ══════════════════════════════════════════
 function setupRichEditor(){
+  richEditor.addEventListener('paste', e => {
+    if (readOnlyDoc) return
+    e.preventDefault()
+    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || ''
+    document.execCommand('insertText', false, text)
+  })
   richEditor.addEventListener('input',()=>{
+    if (_editorSyncing) return
     _lastSrc='wysiwyg'
     recordRichHistory()
     setModified(true)
     scheduleRender()
     updateStatus()
+    if (editMode === 'split') syncEditorsFromWysiwyg()
+  })
+  richEditor.addEventListener('focusin', () => {
+    if (editMode !== 'split') return
+    _lastSrc = 'wysiwyg'
+    updateModeToolbars('split')
   })
   richEditor.addEventListener('keydown',e=>{
     const acc=e.metaKey||e.ctrlKey
@@ -569,11 +729,18 @@ function insertCodeBlock(){
 // ════ MD 工具栏 ══════════════════════════════════════════════
 function setupMdToolbar(){
   mdEditor.addEventListener('input',()=>{
+    if (_editorSyncing) return
     _lastSrc='md'
     recordMdHistory()
     setModified(true)
     scheduleRender()
     updateStatus()
+    if (editMode === 'split') syncEditorsFromMd()
+  })
+  mdEditor.addEventListener('focusin', () => {
+    if (editMode !== 'split') return
+    _lastSrc = 'md'
+    updateModeToolbars('split')
   })
   mdEditor.addEventListener('keydown',e=>{
     if(e.key==='Tab'){e.preventDefault();insertMd('  ');return}
@@ -848,7 +1015,7 @@ let _mdHist = []
 let _mdHistIdx = 0
 
 function isMdEditing () {
-  return editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')
+  return editMode === 'markdown' || (editMode === 'split' && isMdFocused())
 }
 
 function getRichCaretOffset () {
@@ -1113,7 +1280,7 @@ function showTableDialog(){
   _tableExtendCtx = null
   if (readOnlyDoc) return
   // 工具栏：仅插入新表（扩展行列请用表内右键）
-  if (editMode === 'wysiwyg' || (editMode === 'split' && _lastSrc === 'wysiwyg')) {
+  if (editMode === 'wysiwyg' || (editMode === 'split' && isRichFocused())) {
     const sel = window.getSelection()
     _savedRange = (sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null
   } else {
@@ -1131,7 +1298,7 @@ $('table-ok').onclick=()=>{
   $('table-dialog').style.display='none'
   const insRows = Math.max(1, rows)
   const insCols = Math.max(1, cols)
-  if (editMode === 'wysiwyg' || (editMode === 'split' && _lastSrc === 'wysiwyg')) insertRichTable(insRows, insCols, header)
+  if (editMode === 'wysiwyg' || (editMode === 'split' && isRichFocused())) insertRichTable(insRows, insCols, header)
   else insertMdTable(insRows, insCols, header)
 }
 $('table-dialog').onclick=e=>{if(e.target===$('table-dialog'))$('table-dialog').style.display='none'}
@@ -1608,7 +1775,7 @@ function setupFindBar(){
   })
 }
 function showFindBar(){findBar.style.display='flex';findInput.focus();findInput.select();doFind()}
-function hideFindBar(){findBar.style.display='none';findMatches=[];findCount.textContent='';if(editMode==='markdown')mdEditor.focus();else richEditor.focus()}
+function hideFindBar(){findBar.style.display='none';findMatches=[];findCount.textContent='';if(editMode==='markdown'||(editMode==='split'&&_lastSrc==='md'))mdEditor.focus();else richEditor.focus()}
 function doFind(){
   const q=findInput.value;findMatches=[]
   if(!q){findCount.textContent='';return}
@@ -1649,17 +1816,15 @@ function setupResizer(){
   let startX=0,startW=0
   resizerEl.addEventListener('mousedown',e=>{
     isResizing=true;startX=e.clientX
-    const lp=editMode==='split'&&_lastSrc==='md'?mdPane:wysiwygPane
-    startW=lp.getBoundingClientRect().width
+    startW=wysiwygPane.getBoundingClientRect().width
     document.body.style.cursor='col-resize';document.body.style.userSelect='none'
   })
   document.addEventListener('mousemove',e=>{
     if(!isResizing)return
     const total=mainArea.getBoundingClientRect().width
     const newW=Math.max(200,Math.min(startW+(e.clientX-startX),total-200))
-    const lp=editMode==='split'&&_lastSrc==='md'?mdPane:wysiwygPane
-    lp.style.flex='none';lp.style.width=newW+'px'
-    previewPane.style.flex='1';previewPane.style.width=''
+    wysiwygPane.style.flex='none';wysiwygPane.style.width=newW+'px'
+    mdPane.style.flex='1';mdPane.style.width=''
   })
   document.addEventListener('mouseup',()=>{
     if(!isResizing)return;isResizing=false
@@ -3078,7 +3243,7 @@ async function insertMarkdownImageAtCursor(){
   const r=await window.mobiAPI.importMarkdownImage({mdFilePath:currentFile||''})
   if(r.cancelled)return
   if(r.error){alert(r.error);return}
-  if(editMode==='markdown'||(editMode==='split'&&_lastSrc==='md')){
+  if(editMode==='markdown'||(editMode==='split'&&isMdFocused())){
     insertMd('![]('+r.mdRel+')')
     return
   }

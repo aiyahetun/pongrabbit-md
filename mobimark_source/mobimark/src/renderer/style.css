@@ -1149,6 +1149,7 @@ body.sidebar-collapsed #sidebar{
 .editor-pane{flex:1;min-width:200px;display:flex;flex-direction:column;overflow:hidden}
 #wysiwyg-pane{background:var(--bg-editor)}
 #md-pane{background:var(--bg-editor)}
+body.mode-split #md-pane{border-left:1px solid var(--bd)}
 #rich-editor{
   flex:1;padding:36px 52px;
   font-size:15px;line-height:1.85;

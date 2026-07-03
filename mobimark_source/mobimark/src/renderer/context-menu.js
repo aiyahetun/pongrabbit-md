@@ -90,15 +90,23 @@ function setupContextMenu () {
   }
 
   function isMdMode () {
-    return editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')
+    return editMode === 'markdown'
   }
 
   function isRichMode () {
-    return editMode === 'wysiwyg' || (editMode === 'split' && _lastSrc === 'wysiwyg')
+    return editMode === 'wysiwyg'
   }
 
-  function hasSelectionInEditor () {
-    if (isMdMode()) {
+  function isSplitMdTarget (target) {
+    return editMode === 'split' && mdPane && (target === mdEditor || mdPane.contains(target))
+  }
+
+  function isSplitRichTarget (target) {
+    return editMode === 'split' && richEditor && (target === richEditor || richEditor.contains(target))
+  }
+
+  function hasSelectionInEditor (mode) {
+    if (mode === 'md') {
       return mdEditor.selectionStart !== mdEditor.selectionEnd
     }
     const sel = window.getSelection()
@@ -112,7 +120,8 @@ function setupContextMenu () {
       const hasSel = sel && !sel.isCollapsed
       return { zone: 'preview', hasSelection: hasSel }
     }
-    if (isMdMode()) {
+    const useMd = isMdMode() || isSplitMdTarget(target)
+    if (useMd) {
       const pos = mdEditor.selectionStart
       const tCtx = getMdTableCellContext(pos)
       if (tCtx) return { zone: 'editor', mode: 'md', kind: 'table', mdTable: tCtx }
@@ -127,10 +136,10 @@ function setupContextMenu () {
       if (/^```/.test(line.trim()) || (pos > 0 && v.lastIndexOf('```', pos) > v.lastIndexOf('```', 0))) {
         return { zone: 'editor', mode: 'md', kind: 'codeblock' }
       }
-      if (hasSelectionInEditor()) return { zone: 'editor', mode: 'md', kind: 'selection' }
+      if (hasSelectionInEditor('md')) return { zone: 'editor', mode: 'md', kind: 'selection' }
       return { zone: 'editor', mode: 'md', kind: 'empty' }
     }
-    if (isRichMode()) {
+    if (isRichMode() || isSplitRichTarget(target) || editMode === 'split') {
       let node = target
       if (node.nodeType === 3) node = node.parentElement
       if (!node) return { zone: 'editor', mode: 'rich', kind: 'empty' }
@@ -148,7 +157,7 @@ function setupContextMenu () {
       if (pre && richEditor.contains(pre)) {
         return { zone: 'editor', mode: 'rich', kind: 'codeblock', preEl: pre }
       }
-      if (hasSelectionInEditor()) return { zone: 'editor', mode: 'rich', kind: 'selection' }
+      if (hasSelectionInEditor('rich')) return { zone: 'editor', mode: 'rich', kind: 'selection' }
       return { zone: 'editor', mode: 'rich', kind: 'empty' }
     }
     return { zone: 'editor', kind: 'empty' }
@@ -323,27 +332,31 @@ function setupContextMenu () {
     }
 
     const c = st
+    const mdCtx = c.mode === 'md' || (editMode === 'markdown' && c.zone !== 'preview')
 
     if (action === 'undo') execEditorUndo()
     else if (action === 'redo') execEditorRedo()
     else if (action === 'cut') document.execCommand('cut')
     else if (action === 'copy') document.execCommand('copy')
-    else if (action === 'paste') document.execCommand('paste')
+    else if (action === 'paste') {
+      if (mdCtx) document.execCommand('paste')
+      else void pastePlainTextInRichEditor()
+    }
     else if (action === 'selectAll') {
-      if (isMdMode()) mdEditor.select()
+      if (mdCtx) mdEditor.select()
       else document.execCommand('selectAll')
     }
     else if (action === 'find') showFindBar()
     else if (action === 'bold') {
-      if (isMdMode()) wrapMd('**', '**')
+      if (mdCtx) wrapMd('**', '**')
       else document.execCommand('bold')
     }
     else if (action === 'italic') {
-      if (isMdMode()) wrapMd('*', '*')
+      if (mdCtx) wrapMd('*', '*')
       else document.execCommand('italic')
     }
     else if (action === 'strike') {
-      if (isMdMode()) wrapMd('~~', '~~')
+      if (mdCtx) wrapMd('~~', '~~')
       else document.execCommand('strikeThrough')
     }
     else if (action === 'link') showLinkDialog()
@@ -351,7 +364,7 @@ function setupContextMenu () {
     else if (action === 'ins-image') insertMarkdownImageAtCursor()
     else if (action === 'ins-link') showLinkDialog()
     else if (action === 'ins-hr') {
-      if (isMdMode()) insertMd('\n\n---\n\n')
+      if (mdCtx) insertMd('\n\n---\n\n')
       else document.execCommand('insertHorizontalRule')
     }
     else if (action === 'ins-code') insertCodeBlock()
@@ -398,7 +411,7 @@ function setupContextMenu () {
           recordRichHistory()
           setModified(true)
           scheduleRender()
-        } else if (isMdMode()) {
+        } else if (c.mode === 'md') {
           const v = mdEditor.value
           const ls = v.lastIndexOf('\n', mdEditor.selectionStart - 1) + 1
           const le = v.indexOf('\n', mdEditor.selectionStart)
@@ -433,7 +446,7 @@ function setupContextMenu () {
           recordRichHistory()
           setModified(true)
           scheduleRender()
-        } else if (isMdMode()) {
+        } else if (c.mode === 'md') {
           wrapMd('', '')
         }
       }
@@ -551,13 +564,13 @@ function setupContextMenu () {
 
   richEditor.addEventListener('contextmenu', e => {
     if (editMode === 'preview') return
-    if (isRichMode() || editMode === 'wysiwyg') onContextMenu(e, 'editor')
+    if (editMode === 'wysiwyg' || editMode === 'split') onContextMenu(e, 'editor')
   })
   mdEditor.addEventListener('contextmenu', e => {
-    if (isMdMode()) onContextMenu(e, 'editor')
+    if (editMode === 'markdown' || editMode === 'split') onContextMenu(e, 'editor')
   })
   previewEl.addEventListener('contextmenu', e => {
-    if (editMode === 'preview' || editMode === 'split') onContextMenu(e, 'editor')
+    if (editMode === 'preview') onContextMenu(e, 'editor')
   })
   const fileTree = $('file-tree')
   if (fileTree) fileTree.addEventListener('contextmenu', e => onContextMenu(e, 'tree'))
