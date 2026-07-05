@@ -60,6 +60,10 @@ function defaultConfig () {
     musicVolume: 0.6,
     workspaceRoot: '',
     sidebarCollapsed: false,
+    /** 侧栏 Tab：outline 目录 | files 工作区 */
+    sidebarTab: 'outline',
+    /** 预览区两端对齐 */
+    previewJustify: false,
     /** 小红书短图/长图导出配色风格 id */
     xhsExportStyle: 'slate-blue-frost',
     /** 导出正文字体：noto-serif-sc | noto-sans-sc | smiley-sans | ibm-plex */

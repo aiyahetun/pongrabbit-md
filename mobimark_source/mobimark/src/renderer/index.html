@@ -70,10 +70,16 @@
       <button type="button" class="action-btn" id="btn-save" title="保存（Ctrl+S）">保存</button>
       <button type="button" class="action-btn" id="btn-save-as" title="另存为（Ctrl+Shift+S）">另存为</button>
       <div class="tool-sep"></div>
-      <button type="button" class="action-btn" id="btn-export-pdf">导出 PDF</button>
-      <button type="button" class="action-btn" id="btn-export-html">导出 HTML</button>
-      <button type="button" class="action-btn" id="btn-export-xhs-short" title="选风格与字体；短图固定 2× 像素分页（约 2160×2880）">短图 3:4</button>
-      <button type="button" class="action-btn" id="btn-export-xhs-long" title="选风格与字体；长图固定 2× 像素（宽约 2160）">长图 3:4</button>
+      <div class="export-menu-wrap" id="export-menu-wrap">
+        <button type="button" class="action-btn export-menu-trigger" id="btn-export-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">导出 ▾</button>
+        <div id="export-menu" class="export-menu" role="menu" hidden>
+          <button type="button" class="export-menu-item" id="btn-export-pdf" role="menuitem">导出 PDF</button>
+          <button type="button" class="export-menu-item" id="btn-export-html" role="menuitem">导出 HTML</button>
+          <div class="export-menu-sep" role="separator"></div>
+          <button type="button" class="export-menu-item" id="btn-export-xhs-short" role="menuitem" title="选风格与字体；短图固定 2× 像素分页（约 2160×2880）">短图 3:4</button>
+          <button type="button" class="export-menu-item" id="btn-export-xhs-long" role="menuitem" title="选风格与字体；长图固定 2× 像素（宽约 2160）">长图 3:4</button>
+        </div>
+      </div>
     </div>
     <div id="mode-actions-trail">
       <div class="tool-sep"></div>
@@ -110,55 +116,55 @@
   </select>
   <div class="tool-sep rich-toolbar-sep"></div>
   <div class="fmt-pill" id="rich-fmt-pill">
-  <button type="button" class="fmt-btn" id="r-bold" title="加粗"><b>B</b></button>
-  <button type="button" class="fmt-btn" id="r-italic" title="斜体"><i>I</i></button>
-  <button type="button" class="fmt-btn" id="r-underline" title="下划线"><u>U</u></button>
-  <button type="button" class="fmt-btn" id="r-strike" title="删除线"><s>S</s></button>
+  <button type="button" class="fmt-btn" id="r-bold" title="加粗" aria-label="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="r-italic" title="斜体" aria-label="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="r-underline" title="下划线" aria-label="下划线"><u>U</u></button>
+  <button type="button" class="fmt-btn" id="r-strike" title="删除线" aria-label="删除线"><s>S</s></button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-align-left" title="左对齐">⬅</button>
-  <button type="button" class="fmt-btn" id="r-align-center" title="居中">↔</button>
-  <button type="button" class="fmt-btn" id="r-align-right" title="右对齐">➡</button>
+  <button type="button" class="fmt-btn" id="r-align-left" title="左对齐" aria-label="左对齐">⬅</button>
+  <button type="button" class="fmt-btn" id="r-align-center" title="居中" aria-label="居中">↔</button>
+  <button type="button" class="fmt-btn" id="r-align-right" title="右对齐" aria-label="右对齐">➡</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-ul" title="无序列表">•≡</button>
-  <button type="button" class="fmt-btn" id="r-ol" title="有序列表">1≡</button>
-  <button type="button" class="fmt-btn" id="r-task" title="任务列表">☑</button>
+  <button type="button" class="fmt-btn" id="r-ul" title="无序列表" aria-label="无序列表">•≡</button>
+  <button type="button" class="fmt-btn" id="r-ol" title="有序列表" aria-label="有序列表">1≡</button>
+  <button type="button" class="fmt-btn" id="r-task" title="任务列表" aria-label="任务列表">☑</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-quote" title="引用">❝</button>
-  <button type="button" class="fmt-btn" id="r-code" title="行内代码">`</button>
-  <button type="button" class="fmt-btn" id="r-codeblock" title="代码块">&lt;/&gt;</button>
-  <button type="button" class="fmt-btn" id="r-link" title="链接">🔗</button>
-  <button type="button" class="fmt-btn" id="r-image" title="插入图片">🖼</button>
-  <button type="button" class="fmt-btn" id="r-table" title="表格">▦</button>
-  <button type="button" class="fmt-btn" id="r-hr" title="分割线">─</button>
+  <button type="button" class="fmt-btn" id="r-quote" title="引用" aria-label="引用">❝</button>
+  <button type="button" class="fmt-btn" id="r-code" title="行内代码" aria-label="行内代码">`</button>
+  <button type="button" class="fmt-btn" id="r-codeblock" title="代码块" aria-label="代码块">&lt;/&gt;</button>
+  <button type="button" class="fmt-btn" id="r-link" title="链接" aria-label="插入链接">🔗</button>
+  <button type="button" class="fmt-btn" id="r-image" title="插入图片" aria-label="插入图片">🖼</button>
+  <button type="button" class="fmt-btn" id="r-table" title="表格" aria-label="插入表格">▦</button>
+  <button type="button" class="fmt-btn" id="r-hr" title="分割线" aria-label="分割线">─</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-r" title="查找（Ctrl+F）">🔍 查找</button>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-r" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
   </div>
 </div>
 
 <!-- MD 工具栏 -->
 <div id="md-toolbar" style="display:none">
   <div class="fmt-pill md-fmt-pill">
-  <button type="button" class="fmt-btn" id="fmt-bold" title="加粗"><b>B</b></button>
-  <button type="button" class="fmt-btn" id="fmt-italic" title="斜体"><i>I</i></button>
-  <button type="button" class="fmt-btn" id="fmt-strike" title="删除线"><s>S</s></button>
+  <button type="button" class="fmt-btn" id="fmt-bold" title="加粗" aria-label="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="fmt-italic" title="斜体" aria-label="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="fmt-strike" title="删除线" aria-label="删除线"><s>S</s></button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-h1" title="一级标题">一级</button>
-  <button type="button" class="fmt-btn" id="fmt-h2" title="二级标题">二级</button>
-  <button type="button" class="fmt-btn" id="fmt-h3" title="三级标题">三级</button>
+  <button type="button" class="fmt-btn" id="fmt-h1" title="一级标题" aria-label="一级标题">一级</button>
+  <button type="button" class="fmt-btn" id="fmt-h2" title="二级标题" aria-label="二级标题">二级</button>
+  <button type="button" class="fmt-btn" id="fmt-h3" title="三级标题" aria-label="三级标题">三级</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-quote" title="引用">引用</button>
-  <button type="button" class="fmt-btn" id="fmt-code" title="行内代码">代码</button>
-  <button type="button" class="fmt-btn" id="fmt-codeblock" title="代码块">代码块</button>
-  <button type="button" class="fmt-btn" id="fmt-link" title="链接">链接</button>
-  <button type="button" class="fmt-btn" id="fmt-image" title="插入图片">图片</button>
+  <button type="button" class="fmt-btn" id="fmt-quote" title="引用" aria-label="引用">引用</button>
+  <button type="button" class="fmt-btn" id="fmt-code" title="行内代码" aria-label="行内代码">代码</button>
+  <button type="button" class="fmt-btn" id="fmt-codeblock" title="代码块" aria-label="代码块">代码块</button>
+  <button type="button" class="fmt-btn" id="fmt-link" title="链接" aria-label="插入链接">链接</button>
+  <button type="button" class="fmt-btn" id="fmt-image" title="插入图片" aria-label="插入图片">图片</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-ul" title="无序列表">无序</button>
-  <button type="button" class="fmt-btn" id="fmt-ol" title="有序列表">有序</button>
-  <button type="button" class="fmt-btn" id="fmt-task" title="任务列表">☑</button>
-  <button type="button" class="fmt-btn" id="fmt-table" title="表格">表格</button>
-  <button type="button" class="fmt-btn" id="fmt-hr" title="分割线">分割线</button>
+  <button type="button" class="fmt-btn" id="fmt-ul" title="无序列表" aria-label="无序列表">无序</button>
+  <button type="button" class="fmt-btn" id="fmt-ol" title="有序列表" aria-label="有序列表">有序</button>
+  <button type="button" class="fmt-btn" id="fmt-task" title="任务列表" aria-label="任务列表">☑</button>
+  <button type="button" class="fmt-btn" id="fmt-table" title="表格" aria-label="插入表格">表格</button>
+  <button type="button" class="fmt-btn" id="fmt-hr" title="分割线" aria-label="分割线">分割线</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-md" title="查找（Ctrl+F）">🔍 查找</button>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-md" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
   </div>
 </div>
 
@@ -178,19 +184,29 @@
 <div id="main-area">
   <aside id="sidebar">
     <div class="sidebar-toolbar">
-      <button type="button" class="sidebar-icon-btn" id="btn-sidebar-collapse" title="折叠侧栏">◀</button>
-      <span class="sidebar-toolbar-title">工作区</span>
-      <button type="button" class="sidebar-icon-btn" id="btn-workspace-pick" title="选择文件夹">📁</button>
-      <button type="button" class="sidebar-icon-btn" id="btn-workspace-refresh" title="刷新">↻</button>
+      <button type="button" class="sidebar-icon-btn" id="btn-sidebar-collapse" title="折叠侧栏" aria-label="折叠侧栏">◀</button>
+      <div class="sidebar-tab-shell" role="tablist" aria-label="侧栏视图">
+        <button type="button" class="sidebar-tab active" id="sidebar-tab-outline" role="tab" aria-selected="true" aria-controls="sidebar-panel-outline" data-tab="outline">目录</button>
+        <button type="button" class="sidebar-tab" id="sidebar-tab-files" role="tab" aria-selected="false" aria-controls="sidebar-panel-files" data-tab="files">文件</button>
+      </div>
+      <div class="sidebar-toolbar-actions" id="sidebar-files-actions" hidden>
+        <button type="button" class="sidebar-icon-btn" id="btn-workspace-pick" title="选择文件夹" aria-label="选择工作区文件夹">📁</button>
+        <button type="button" class="sidebar-icon-btn" id="btn-workspace-refresh" title="刷新" aria-label="刷新文件树">↻</button>
+      </div>
     </div>
-    <div id="workspace-path-hint" class="workspace-hint"></div>
-    <div id="file-tree" class="file-tree" aria-label="工作区文件"></div>
-    <div class="sidebar-tree-actions">
-      <button type="button" class="sidebar-action-btn" id="btn-tree-new-file">＋ 笔记</button>
-      <button type="button" class="sidebar-action-btn" id="btn-tree-new-folder">＋ 文件夹</button>
+    <div id="sidebar-panel-outline" class="sidebar-panel active" role="tabpanel" aria-labelledby="sidebar-tab-outline">
+      <div id="outline-list" class="outline-list" aria-label="文档目录"></div>
     </div>
-    <div class="sidebar-header">最近打开</div>
-    <div id="recent-list"></div>
+    <div id="sidebar-panel-files" class="sidebar-panel" role="tabpanel" aria-labelledby="sidebar-tab-files" hidden>
+      <div id="workspace-path-hint" class="workspace-hint"></div>
+      <div id="file-tree" class="file-tree" aria-label="工作区文件"></div>
+      <div class="sidebar-tree-actions">
+        <button type="button" class="sidebar-action-btn" id="btn-tree-new-file">＋ 笔记</button>
+        <button type="button" class="sidebar-action-btn" id="btn-tree-new-folder">＋ 文件夹</button>
+      </div>
+      <div class="sidebar-header">最近打开</div>
+      <div id="recent-list"></div>
+    </div>
   </aside>
   <button type="button" id="sidebar-rail" class="sidebar-rail" title="展开侧栏" aria-label="展开侧栏" hidden>▶</button>
 
@@ -387,6 +403,12 @@
     <label class="toggle-label">
       <input type="checkbox" id="word-wrap-toggle" checked>
       <span class="toggle-track"></span>自动换行
+    </label>
+  </div>
+  <div class="panel-section">
+    <label class="toggle-label">
+      <input type="checkbox" id="preview-justify-toggle">
+      <span class="toggle-track"></span>预览两端对齐
     </label>
   </div>
   <div class="panel-section" id="glass-settings" style="display:none">

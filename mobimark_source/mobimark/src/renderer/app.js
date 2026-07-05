@@ -49,6 +49,12 @@ let editMode='wysiwyg'  // wysiwyg | markdown | preview | split
 let _lastSrc='wysiwyg' // last edited source
 let _editorSyncing=false
 let renderTimer=null
+let outlineItems=[]
+let activeOutlineIdx=-1
+let outlineCollapsedH2=new Set()
+let outlineSpyPausedUntil=0
+let outlineSpyObserver=null
+let sidebarTab='outline'
 let findMatches=[], findIdx=0, isResizing=false
 // Audio
 let audioCtx=null,noiseNodes=null,noiseType=null
@@ -93,6 +99,9 @@ async function init() {
   setupPromptDialog()
   setupXhsStyleDialog()
   setupWorkspaceSidebar()
+  setupSidebarTabs()
+  setupDocOutline()
+  setupExportMenu()
   setupKeyboard()
   setupContextMenu()
   setupMenu()
@@ -151,6 +160,8 @@ function syncReadOnlyUi () {
     const el = $(id)
     if (el) el.disabled = readOnlyDoc
   })
+  const exportTrigger = $('btn-export-menu')
+  if (exportTrigger) exportTrigger.disabled = readOnlyDoc
   const rep1 = $('find-replace-one')
   const repA = $('find-replace-all')
   if (rep1) rep1.disabled = readOnlyDoc
@@ -176,9 +187,92 @@ function applyOpenedDocument (r) {
     _lastSrc = 'wysiwyg'
     setMode('wysiwyg')
   }
-  renderPreview()
+  renderPreview().then(() => renderOutlineList())
   updateStatus()
   resetEditorHistory()
+}
+
+function applySidebarTab (tab, save = true) {
+  const t = tab === 'files' ? 'files' : 'outline'
+  sidebarTab = t
+  const tabOutline = $('sidebar-tab-outline')
+  const tabFiles = $('sidebar-tab-files')
+  const panelOutline = $('sidebar-panel-outline')
+  const panelFiles = $('sidebar-panel-files')
+  const filesActions = $('sidebar-files-actions')
+  if (tabOutline) {
+    tabOutline.classList.toggle('active', t === 'outline')
+    tabOutline.setAttribute('aria-selected', t === 'outline' ? 'true' : 'false')
+  }
+  if (tabFiles) {
+    tabFiles.classList.toggle('active', t === 'files')
+    tabFiles.setAttribute('aria-selected', t === 'files' ? 'true' : 'false')
+  }
+  if (panelOutline) {
+    panelOutline.classList.toggle('active', t === 'outline')
+    panelOutline.hidden = t !== 'outline'
+  }
+  if (panelFiles) {
+    panelFiles.classList.toggle('active', t === 'files')
+    panelFiles.hidden = t !== 'files'
+  }
+  if (filesActions) filesActions.hidden = t !== 'files'
+  if (save) {
+    cfg.sidebarTab = t
+    window.mobiAPI.saveConfig({ sidebarTab: t })
+  }
+}
+
+function applyPreviewJustify (on, save = true) {
+  body.classList.toggle('preview-justify', !!on)
+  const el = $('preview-justify-toggle')
+  if (el) el.checked = !!on
+  cfg.previewJustify = !!on
+  if (save) window.mobiAPI.saveConfig({ previewJustify: !!on })
+}
+
+function setupSidebarTabs () {
+  $('sidebar-tab-outline')?.addEventListener('click', () => applySidebarTab('outline'))
+  $('sidebar-tab-files')?.addEventListener('click', () => applySidebarTab('files'))
+  const pjt = $('preview-justify-toggle')
+  if (pjt) {
+    pjt.addEventListener('change', () => applyPreviewJustify(pjt.checked))
+  }
+}
+
+function setupExportMenu () {
+  const wrap = $('export-menu-wrap')
+  const trigger = $('btn-export-menu')
+  const menu = $('export-menu')
+  if (!wrap || !trigger || !menu) return
+
+  const closeMenu = () => {
+    menu.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+  }
+  const openMenu = () => {
+    menu.hidden = false
+    trigger.setAttribute('aria-expanded', 'true')
+  }
+  const toggleMenu = () => {
+    if (menu.hidden) openMenu()
+    else closeMenu()
+  }
+
+  trigger.onclick = (e) => {
+    e.stopPropagation()
+    if (trigger.disabled) return
+    toggleMenu()
+  }
+  menu.addEventListener('click', (e) => {
+    if (e.target.closest('.export-menu-item')) closeMenu()
+  })
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) closeMenu()
+  })
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu()
+  })
 }
 
 // ── Config ───────────────────────────────────────────────────
@@ -203,6 +297,8 @@ async function applyConfig(c) {
   syncVolumeSliderVar()
   syncUI(c)
   applySidebarCollapsedState(!!c.sidebarCollapsed)
+  applySidebarTab(c.sidebarTab || 'outline', false)
+  applyPreviewJustify(!!c.previewJustify, false)
   if(c.musicFolder){$('music-folder-display').textContent=c.musicFolder;loadMusicFolder(c.musicFolder)}
 }
 
@@ -213,6 +309,8 @@ function syncUI(c){
   $('line-height-display').textContent=(c.lineHeight||1.8)
   $('font-family-select').value=c.fontFamily||'system'
   $('word-wrap-toggle').checked=c.wordWrap!==false
+  const pjt=$('preview-justify-toggle')
+  if(pjt)pjt.checked=!!c.previewJustify
   $('blur-slider').value=c.glassBlur ?? 28
   $('blur-display').textContent=($('blur-slider').value)+'px'
   const ov=c.glassOverlay!==undefined?c.glassOverlay:2
@@ -629,6 +727,8 @@ function setMode(mode) {
   const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
   $('status-mode').textContent = names[mode] || mode
   updateStatus()
+  refreshOutline()
+  setupOutlineSpy()
 }
 
 // ════ 富文本编辑器 ══════════════════════════════════════════
@@ -851,6 +951,7 @@ async function newFile(){
     richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
     resetEditorHistory()
     setModified(false);setTitle('无题文档');updateStatus()
+    refreshOutline()
   }
 }
 async function openFile(){
@@ -924,12 +1025,19 @@ function updateStatus(){
 }
 
 // ════ 预览渲染 ══════════════════════════════════════════════
-function scheduleRender(){clearTimeout(renderTimer);renderTimer=setTimeout(renderPreview,200)}
+function scheduleRender(){
+  clearTimeout(renderTimer)
+  renderTimer=setTimeout(async()=>{
+    await renderPreview()
+    renderOutlineList()
+  },200)
+}
 async function renderPreview(){
   if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">正在渲染预览…</div>';return}
   try{
     window.marked.setOptions({breaks:true,gfm:true})
     const md=getCurrentMd()
+    outlineItems=parseHeadingsFromMd(md)
     const src=md.replace(/^([ \t]*[-*+] )\[([ xX])\] /gm,(_,b,c)=>`${b}<input type="checkbox" ${c!=' '?'checked':''}> `)
     previewEl.innerHTML=window.marked.parse(src)
     if(window.hljsAPI){
@@ -949,7 +1057,325 @@ async function renderPreview(){
     previewEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
       cb.addEventListener('change',()=>{cb.checked=!cb.checked})
     })
+    applyOutlineIdsToPreview()
   }catch(err){previewEl.innerHTML='<pre style="color:red;padding:20px">'+escHtml(String(err))+'</pre>'}
+}
+
+// ════ 文档目录（h1–h3）══════════════════════════════════════
+function stripMdInline (s) {
+  return String(s || '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .trim()
+}
+
+function slugifyHeading (text) {
+  const t = stripMdInline(text).toLowerCase()
+    .replace(/[^\w\u4e00-\u9fff]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return t || 'heading'
+}
+
+/** 围栏外解析 ATX 标题（# – ###） */
+function parseHeadingsFromMd (md, maxLevel = 3) {
+  const lines = String(md || '').replace(/\r\n/g, '\n').split('\n')
+  let inFence = false
+  const items = []
+  const headingRe = new RegExp(`^(#{1,${maxLevel}})\\s+(.+)$`)
+  for (let i = 0; i < lines.length; i++) {
+    const tr = lines[i].trim()
+    if (tr.startsWith('```') || tr.startsWith('~~~')) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const m = tr.match(headingRe)
+    if (!m) continue
+    const text = stripMdInline(m[2].replace(/\s+#+\s*$/, ''))
+    if (!text) continue
+    items.push({ level: m[1].length, text, lineIndex: i })
+  }
+  const slugCounts = {}
+  items.forEach(item => {
+    const base = slugifyHeading(item.text)
+    const n = slugCounts[base] || 0
+    slugCounts[base] = n + 1
+    item.slug = n ? `${base}-${n}` : base
+  })
+  return items
+}
+
+function applyOutlineIdsToPreview () {
+  const headings = previewEl.querySelectorAll('h1,h2,h3')
+  headings.forEach((el, i) => {
+    if (outlineItems[i]) el.id = outlineItems[i].slug
+  })
+}
+
+function getH2FoldKey (idx) {
+  return 'h2-' + idx
+}
+
+function isOutlineItemHidden (idx) {
+  const item = outlineItems[idx]
+  if (!item || item.level !== 3) return false
+  for (let i = idx - 1; i >= 0; i--) {
+    const prev = outlineItems[i]
+    if (prev.level === 2) return outlineCollapsedH2.has(getH2FoldKey(i))
+    if (prev.level === 1) break
+  }
+  return false
+}
+
+function h2HasH3Children (h2Idx) {
+  for (let i = h2Idx + 1; i < outlineItems.length; i++) {
+    if (outlineItems[i].level <= 2) break
+    if (outlineItems[i].level === 3) return true
+  }
+  return false
+}
+
+function renderOutlineList () {
+  const list = $('outline-list')
+  if (!list) return
+  list.innerHTML = ''
+  if (!outlineItems.length) {
+    const empty = document.createElement('div')
+    empty.className = 'outline-empty'
+    empty.textContent = '本文暂无标题'
+    list.appendChild(empty)
+    return
+  }
+  outlineItems.forEach((item, idx) => {
+    if (isOutlineItemHidden(idx)) return
+    const row = document.createElement('div')
+    row.className = 'outline-row outline-l' + item.level + '-row'
+    row.dataset.idx = String(idx)
+
+    if (item.level === 2 && h2HasH3Children(idx)) {
+      const fold = document.createElement('button')
+      fold.type = 'button'
+      fold.className = 'outline-fold'
+      const collapsed = outlineCollapsedH2.has(getH2FoldKey(idx))
+      fold.textContent = collapsed ? '▸' : '▾'
+      fold.title = collapsed ? '展开子节' : '折叠子节'
+      fold.setAttribute('aria-label', collapsed ? '展开子节' : '折叠子节')
+      fold.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const key = getH2FoldKey(idx)
+        if (outlineCollapsedH2.has(key)) outlineCollapsedH2.delete(key)
+        else outlineCollapsedH2.add(key)
+        renderOutlineList()
+      })
+      row.appendChild(fold)
+    } else if (item.level === 3) {
+      const spacer = document.createElement('span')
+      spacer.className = 'outline-fold-spacer'
+      row.appendChild(spacer)
+    }
+
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'outline-item outline-l' + item.level + (idx === activeOutlineIdx ? ' outline-active' : '')
+    btn.textContent = item.text
+    btn.title = item.text
+    btn.setAttribute('aria-label', item.text)
+    btn.addEventListener('click', () => navigateToOutlineItem(idx))
+    row.appendChild(btn)
+    list.appendChild(row)
+  })
+  setupOutlineSpy()
+}
+
+function refreshOutline () {
+  outlineItems = parseHeadingsFromMd(getCurrentMd())
+  renderOutlineList()
+  if (editMode === 'preview') applyOutlineIdsToPreview()
+}
+
+function setActiveOutlineIdx (idx, fromSpy = false) {
+  activeOutlineIdx = idx
+  const list = $('outline-list')
+  if (!list) return
+  list.querySelectorAll('.outline-item').forEach((el) => {
+    const row = el.closest('.outline-row')
+    const i = row ? parseInt(row.dataset.idx, 10) : -1
+    el.classList.toggle('outline-active', i === idx)
+  })
+  if (!fromSpy && idx >= 0) {
+    const row = list.querySelector('.outline-row[data-idx="' + idx + '"]')
+    if (row) row.scrollIntoView({ block: 'nearest' })
+  }
+}
+
+function pauseOutlineSpy (ms = 800) {
+  outlineSpyPausedUntil = Date.now() + ms
+}
+
+function getOutlineSpyRoot () {
+  switch (editMode) {
+    case 'preview': return previewPane
+    case 'markdown': return mdEditor
+    case 'wysiwyg': return richEditor
+    case 'split': return richEditor
+    default: return null
+  }
+}
+
+function getOutlineSpyIndexFromScroll () {
+  if (!outlineItems.length) return -1
+  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
+    const lineH = parseFloat(window.getComputedStyle(mdEditor).lineHeight) || 24
+    const padTop = parseFloat(window.getComputedStyle(mdEditor).paddingTop) || 36
+    const scrollLine = Math.max(0, Math.floor((mdEditor.scrollTop + padTop + lineH * 0.5) / lineH))
+    let idx = -1
+    outlineItems.forEach((item, i) => {
+      if (item.lineIndex <= scrollLine) idx = i
+    })
+    return idx
+  }
+  const root = getOutlineSpyRoot()
+  if (!root) return -1
+  const headings = root === previewPane
+    ? previewEl.querySelectorAll('h1,h2,h3')
+    : root.querySelectorAll('h1,h2,h3')
+  if (!headings.length) return -1
+  const rootTop = root.getBoundingClientRect().top
+  let idx = -1
+  headings.forEach((el, i) => {
+    if (el.getBoundingClientRect().top - rootTop <= 96) idx = i
+  })
+  return idx
+}
+
+function setupOutlineSpy () {
+  if (outlineSpyObserver) {
+    outlineSpyObserver.disconnect()
+    outlineSpyObserver = null
+  }
+  const root = getOutlineSpyRoot()
+  if (!root || !outlineItems.length) return
+
+  if (editMode === 'markdown' || (editMode === 'split' && document.activeElement === mdEditor)) {
+    const onScroll = () => {
+      if (Date.now() < outlineSpyPausedUntil) return
+      const idx = getOutlineSpyIndexFromScroll()
+      if (idx >= 0 && idx !== activeOutlineIdx) setActiveOutlineIdx(idx, true)
+    }
+    mdEditor.removeEventListener('scroll', mdEditor._outlineSpyScroll)
+    mdEditor._outlineSpyScroll = onScroll
+    mdEditor.addEventListener('scroll', onScroll, { passive: true })
+    return
+  }
+
+  if (typeof IntersectionObserver === 'undefined') return
+  const headings = root === previewPane
+    ? previewEl.querySelectorAll('h1,h2,h3')
+    : root.querySelectorAll('h1,h2,h3')
+  if (!headings.length) return
+
+  const visible = new Map()
+  outlineSpyObserver = new IntersectionObserver((entries) => {
+    if (Date.now() < outlineSpyPausedUntil) return
+    entries.forEach((entry) => {
+      const i = Array.from(headings).indexOf(entry.target)
+      if (i < 0) return
+      if (entry.isIntersecting) visible.set(i, entry.intersectionRatio)
+      else visible.delete(i)
+    })
+    if (!visible.size) return
+    let best = -1
+    let bestRatio = -1
+    visible.forEach((ratio, i) => {
+      if (ratio > bestRatio) { bestRatio = ratio; best = i }
+    })
+    if (best >= 0 && best !== activeOutlineIdx) setActiveOutlineIdx(best, true)
+  }, { root, rootMargin: '-72px 0px -60% 0px', threshold: [0, 0.1, 0.5, 1] })
+
+  headings.forEach((el) => outlineSpyObserver.observe(el))
+  richEditor.removeEventListener('scroll', richEditor._outlineSpyScroll)
+  if (root === richEditor) {
+    const onScroll = () => {
+      if (Date.now() < outlineSpyPausedUntil) return
+      const idx = getOutlineSpyIndexFromScroll()
+      if (idx >= 0 && idx !== activeOutlineIdx) setActiveOutlineIdx(idx, true)
+    }
+    richEditor._outlineSpyScroll = onScroll
+    richEditor.addEventListener('scroll', onScroll, { passive: true })
+  }
+  previewPane.removeEventListener('scroll', previewPane._outlineSpyScroll)
+  if (root === previewPane) {
+    const onScroll = () => {
+      if (Date.now() < outlineSpyPausedUntil) return
+      const idx = getOutlineSpyIndexFromScroll()
+      if (idx >= 0 && idx !== activeOutlineIdx) setActiveOutlineIdx(idx, true)
+    }
+    previewPane._outlineSpyScroll = onScroll
+    previewPane.addEventListener('scroll', onScroll, { passive: true })
+  }
+}
+
+function scrollMdToLine (lineIndex) {
+  const lineH = parseFloat(window.getComputedStyle(mdEditor).lineHeight) || 24
+  const padTop = parseFloat(window.getComputedStyle(mdEditor).paddingTop) || 36
+  mdEditor.scrollTop = Math.max(0, lineIndex * lineH + padTop - mdEditor.clientHeight * 0.12)
+  let pos = 0
+  const lines = mdEditor.value.split('\n')
+  for (let i = 0; i < lineIndex && i < lines.length; i++) pos += lines[i].length + 1
+  mdEditor.setSelectionRange(pos, pos)
+  mdEditor.focus()
+}
+
+function scrollRichToHeadingIndex (idx) {
+  const headings = richEditor.querySelectorAll('h1,h2,h3')
+  const el = headings[idx]
+  if (!el) return
+  richEditor.scrollTo({ top: Math.max(0, el.offsetTop - 24), behavior: 'smooth' })
+  richEditor.focus()
+}
+
+function scrollPreviewToSlug (slug) {
+  const el = document.getElementById(slug)
+  if (!el) return
+  const paneTop = previewPane.getBoundingClientRect().top
+  const elTop = el.getBoundingClientRect().top
+  previewPane.scrollTo({
+    top: Math.max(0, previewPane.scrollTop + elTop - paneTop - 16),
+    behavior: 'smooth'
+  })
+}
+
+function navigateToOutlineItem (idx) {
+  const item = outlineItems[idx]
+  if (!item) return
+  pauseOutlineSpy()
+  setActiveOutlineIdx(idx)
+  if (sidebarTab !== 'outline') applySidebarTab('outline')
+  switch (editMode) {
+    case 'preview':
+      scrollPreviewToSlug(item.slug)
+      break
+    case 'markdown':
+      scrollMdToLine(item.lineIndex)
+      break
+    case 'wysiwyg':
+      scrollRichToHeadingIndex(idx)
+      break
+    case 'split':
+      scrollRichToHeadingIndex(idx)
+      scrollMdToLine(item.lineIndex)
+      break
+  }
+}
+
+function setupDocOutline () {
+  refreshOutline()
 }
 
 // ════ HTML ↔ Markdown ════════════════════════════════════════
