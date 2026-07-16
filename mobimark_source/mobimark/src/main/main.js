@@ -30,12 +30,123 @@ const CODE_DOC_READONLY_EXT = new Set([
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'])
 const IMAGE_EXT_IMPORT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'])
 
-let mainWindow = null
-/** Windows 无边框透明窗口下 isMaximized() 不可靠，用手动铺满工作区实现最大化切换 */
-let winCustomMaximized = false
-let winRestoreBounds = null
 let pendingInitialPath = null
 let config = defaultConfig()
+
+/** 多窗口：webContentsId → 窗口状态 */
+const windowStates = new Map()
+/** 已打开文件的规范化路径 → webContentsId（用于去重聚焦） */
+const filePathToWindow = new Map()
+
+function normalizeOpenPath (filePath) {
+  if (!filePath || typeof filePath !== 'string') return null
+  try {
+    const abs = path.resolve(filePath)
+    return process.platform === 'win32' ? abs.toLowerCase() : abs
+  } catch (_) {
+    return null
+  }
+}
+
+function getWinFromEvent (event) {
+  if (event && event.sender) {
+    const w = BrowserWindow.fromWebContents(event.sender)
+    if (w && !w.isDestroyed()) return w
+  }
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused && !focused.isDestroyed()) return focused
+  const all = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed())
+  return all.length ? all[0] : null
+}
+
+function getState (win) {
+  if (!win || win.isDestroyed()) return null
+  return windowStates.get(win.webContents.id) || null
+}
+
+function forEachWindow (fn) {
+  for (const state of windowStates.values()) {
+    if (state.win && !state.win.isDestroyed()) fn(state.win, state)
+  }
+}
+
+function registerDocumentPath (win, filePath) {
+  if (!win || win.isDestroyed()) return
+  const state = getState(win)
+  if (!state) return
+  const oldKey = normalizeOpenPath(state.documentPath)
+  if (oldKey && filePathToWindow.get(oldKey) === win.webContents.id) {
+    filePathToWindow.delete(oldKey)
+  }
+  state.documentPath = filePath || null
+  const key = normalizeOpenPath(filePath)
+  if (key) filePathToWindow.set(key, win.webContents.id)
+}
+
+function unregisterWindow (win) {
+  if (!win) return
+  const id = win.webContents.id
+  const state = windowStates.get(id)
+  if (state) {
+    const key = normalizeOpenPath(state.documentPath)
+    if (key && filePathToWindow.get(key) === id) filePathToWindow.delete(key)
+  }
+  windowStates.delete(id)
+}
+
+function findWindowByFilePath (filePath) {
+  const key = normalizeOpenPath(filePath)
+  if (!key) return null
+  const id = filePathToWindow.get(key)
+  if (!id) return null
+  const state = windowStates.get(id)
+  if (!state || !state.win || state.win.isDestroyed()) {
+    filePathToWindow.delete(key)
+    return null
+  }
+  return state.win
+}
+
+function focusWindow (win) {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+}
+
+function tryFocusExistingFile (filePath, currentWin) {
+  const existing = findWindowByFilePath(filePath)
+  if (existing && (!currentWin || existing.id !== currentWin.id)) {
+    focusWindow(existing)
+    return true
+  }
+  return false
+}
+
+function nextWindowBounds () {
+  const { width, height } = config.windowBounds || { width: 1100, height: 720 }
+  const existing = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed())
+  if (existing.length === 0) return { width, height }
+  const ref = existing[existing.length - 1]
+  const b = ref.getBounds()
+  const offset = 28
+  const display = screen.getDisplayMatching(b)
+  let x = b.x + offset
+  let y = b.y + offset
+  if (x + width > display.workArea.x + display.workArea.width) x = display.workArea.x + 40
+  if (y + height > display.workArea.y + display.workArea.height) y = display.workArea.y + 40
+  return { x, y, width, height }
+}
+
+function openExternalFile (filePath) {
+  if (!filePath || !allowedOpenExt(filePath)) return null
+  const abs = path.resolve(filePath)
+  const existing = findWindowByFilePath(abs)
+  if (existing) {
+    focusWindow(existing)
+    return existing
+  }
+  return createWindow(abs)
+}
 
 function cfgPath () {
   return path.join(app.getPath('userData'), 'config.json')
@@ -200,9 +311,10 @@ function resolveAmbientPath (type) {
   return null
 }
 
-async function saveAsDialog (content, opts = {}) {
+async function saveAsDialog (content, opts = {}, parentWin = null) {
   const title = opts.title || '保存'
-  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+  const win = parentWin && !parentWin.isDestroyed() ? parentWin : BrowserWindow.getFocusedWindow()
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
     title,
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown'] },
@@ -249,38 +361,41 @@ function setMacDockIcon () {
 }
 
 /** 毛玻璃：透明底以便 WebView 与系统磨砂；非毛玻璃用白底 */
-function syncGlassWindowBackground (theme) {
-  if (!mainWindow || mainWindow.isDestroyed()) return
+function syncGlassWindowBackground (win, theme) {
+  if (!win || win.isDestroyed()) return
   try {
-    mainWindow.setBackgroundColor(theme === 'glass' ? '#00000000' : '#FFFFFFFF')
+    win.setBackgroundColor(theme === 'glass' ? '#00000000' : '#FFFFFFFF')
   } catch (e) {
     console.warn('[window background]', e.message)
   }
 }
 
 /** macOS 毛玻璃：无自定义壁纸时用 under-window，与开发/打包一致 */
-function syncMacVibrancy (theme) {
-  syncGlassWindowBackground(theme)
-  if (process.platform !== 'darwin' || !mainWindow || mainWindow.isDestroyed()) return
-  try {
-    const useUnderWindow = theme === 'glass' && !hasGlassCustomBg()
-    if (useUnderWindow) {
-      mainWindow.setVibrancy('under-window')
-    } else {
-      mainWindow.setVibrancy(null)
+function syncMacVibrancy (theme, targetWin = null) {
+  const apply = (win) => {
+    syncGlassWindowBackground(win, theme)
+    if (process.platform !== 'darwin' || !win || win.isDestroyed()) return
+    try {
+      const useUnderWindow = theme === 'glass' && !hasGlassCustomBg()
+      if (useUnderWindow) {
+        win.setVibrancy('under-window')
+      } else {
+        win.setVibrancy(null)
+      }
+    } catch (e) {
+      console.warn('[mac vibrancy]', e.message)
     }
-  } catch (e) {
-    console.warn('[mac vibrancy]', e.message)
   }
+  if (targetWin) apply(targetWin)
+  else forEachWindow(apply)
 }
 
-function createWindow () {
-  const { width, height } = config.windowBounds || { width: 1100, height: 720 }
+function createWindow (initialFilePath = null) {
+  const bounds = nextWindowBounds()
   const glassTheme = (config.theme || 'light') === 'glass'
   const winAcrylic = glassTheme && !hasGlassCustomBg()
   const winOpts = {
-    width,
-    height,
+    ...bounds,
     minWidth: 800,
     minHeight: 550,
     frame: false,
@@ -305,6 +420,14 @@ function createWindow () {
     winOpts.trafficLightPosition = { x: 20, y: 15 }
   }
   const win = new BrowserWindow(winOpts)
+  const state = {
+    win,
+    initialPath: initialFilePath ? path.resolve(initialFilePath) : null,
+    documentPath: null,
+    winCustomMaximized: false,
+    winRestoreBounds: null
+  }
+  windowStates.set(win.webContents.id, state)
   try {
     win.setHasShadow(true)
   } catch (_) {}
@@ -338,12 +461,13 @@ function createWindow () {
   })
   win.loadFile(path.join(__dirname, '../renderer/index.html'))
   win.on('resize', () => {
-    if (process.platform === 'win32' && winCustomMaximized) {
+    const st = getState(win)
+    if (process.platform === 'win32' && st && st.winCustomMaximized) {
       const area = screen.getDisplayMatching(win.getBounds()).workArea
       const b = win.getBounds()
       if (b.width !== area.width || b.height !== area.height || b.x !== area.x || b.y !== area.y) {
-        winCustomMaximized = false
-        winRestoreBounds = null
+        st.winCustomMaximized = false
+        st.winRestoreBounds = null
         sendWinState(win)
       }
     }
@@ -353,25 +477,32 @@ function createWindow () {
   })
   win.on('maximize', () => sendWinState(win))
   win.on('unmaximize', () => {
-    winCustomMaximized = false
-    winRestoreBounds = null
+    const st = getState(win)
+    if (st) {
+      st.winCustomMaximized = false
+      st.winRestoreBounds = null
+    }
     sendWinState(win)
   })
   win.on('restore', () => {
-    winCustomMaximized = false
-    winRestoreBounds = null
+    const st = getState(win)
+    if (st) {
+      st.winCustomMaximized = false
+      st.winRestoreBounds = null
+    }
     sendWinState(win)
   })
-  win.on('closed', () => { mainWindow = null })
-  mainWindow = win
+  win.on('closed', () => { unregisterWindow(win) })
   const th = config.theme || 'light'
-  syncMacVibrancy(th)
-  syncWinGlassMaterial(th)
+  syncMacVibrancy(th, win)
+  syncWinGlassMaterial(th, win)
+  return win
 }
 
 function buildMenu () {
   const send = (ch, ...args) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, ...args)
+    const win = BrowserWindow.getFocusedWindow()
+    if (win && !win.isDestroyed()) win.webContents.send(ch, ...args)
   }
   const isMac = process.platform === 'darwin'
   const template = [
@@ -443,30 +574,25 @@ if (!gotLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     const p = fileFromArgv(argv)
-    if (mainWindow) {
-      if (p) mainWindow.webContents.send('open-file-path', p)
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    } else {
-      pendingInitialPath = p
-    }
+    if (p) openExternalFile(p)
+    else focusWindow(createWindow())
   })
 
   if (process.platform === 'darwin') {
     app.on('open-file', (event, filePath) => {
       event.preventDefault()
       if (!allowedOpenExt(filePath)) return
-      const abs = path.resolve(filePath)
-      if (mainWindow) mainWindow.webContents.send('open-file-path', abs)
-      else pendingInitialPath = abs
+      openExternalFile(path.resolve(filePath))
     })
   }
 
   app.whenReady().then(() => {
     loadConfig()
     setMacDockIcon()
-    pendingInitialPath = pendingInitialPath || fileFromArgv(process.argv)
-    createWindow()
+    const initial = pendingInitialPath || fileFromArgv(process.argv)
+    pendingInitialPath = null
+    if (initial) openExternalFile(initial)
+    else createWindow()
     buildMenu()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -480,29 +606,32 @@ app.on('window-all-closed', () => {
 
 function sendWinState (win) {
   if (!win || win.isDestroyed()) return
+  const st = getState(win)
   const maximized = process.platform === 'win32'
-    ? winCustomMaximized
+    ? !!(st && st.winCustomMaximized)
     : win.isMaximized()
   win.webContents.send('win-state', maximized ? 'maximized' : 'normal')
 }
 
-ipcMain.on('win-minimize', () => mainWindow?.minimize())
-ipcMain.on('win-maximize', () => {
-  const win = mainWindow
+ipcMain.on('win-minimize', (event) => { getWinFromEvent(event)?.minimize() })
+ipcMain.on('win-maximize', (event) => {
+  const win = getWinFromEvent(event)
   if (!win || win.isDestroyed()) return
+  const st = getState(win)
+  if (!st) return
 
   if (process.platform === 'win32') {
-    if (winCustomMaximized) {
-      if (winRestoreBounds) win.setBounds(winRestoreBounds)
-      winCustomMaximized = false
-      winRestoreBounds = null
+    if (st.winCustomMaximized) {
+      if (st.winRestoreBounds) win.setBounds(st.winRestoreBounds)
+      st.winCustomMaximized = false
+      st.winRestoreBounds = null
       sendWinState(win)
       return
     }
-    winRestoreBounds = win.getBounds()
-    const area = screen.getDisplayMatching(winRestoreBounds).workArea
+    st.winRestoreBounds = win.getBounds()
+    const area = screen.getDisplayMatching(st.winRestoreBounds).workArea
     win.setBounds({ x: area.x, y: area.y, width: area.width, height: area.height })
-    winCustomMaximized = true
+    st.winCustomMaximized = true
     sendWinState(win)
     return
   }
@@ -511,12 +640,14 @@ ipcMain.on('win-maximize', () => {
   else win.maximize()
   setImmediate(() => sendWinState(win))
 })
-ipcMain.handle('win-get-state', () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return 'normal'
-  if (process.platform === 'win32') return winCustomMaximized ? 'maximized' : 'normal'
-  return mainWindow.isMaximized() ? 'maximized' : 'normal'
+ipcMain.handle('win-get-state', (event) => {
+  const win = getWinFromEvent(event)
+  if (!win || win.isDestroyed()) return 'normal'
+  const st = getState(win)
+  if (process.platform === 'win32') return st && st.winCustomMaximized ? 'maximized' : 'normal'
+  return win.isMaximized() ? 'maximized' : 'normal'
 })
-ipcMain.on('win-close', () => mainWindow?.close())
+ipcMain.on('win-close', (event) => { getWinFromEvent(event)?.close() })
 ipcMain.on('show-in-folder', (_, p) => {
   if (!p) return
   try {
@@ -547,14 +678,19 @@ ipcMain.handle('debug-session-log', (_, entry) => {
 })
 
 ipcMain.handle('get-config', () => ({ ...config }))
-function syncWinGlassMaterial (theme) {
-  if (process.platform !== 'win32' || !mainWindow || mainWindow.isDestroyed()) return
-  try {
-    const acrylic = theme === 'glass' && !hasGlassCustomBg()
-    mainWindow.setBackgroundMaterial(acrylic ? 'acrylic' : 'none')
-  } catch (e) {
-    console.warn('[win material]', e.message)
+function syncWinGlassMaterial (theme, targetWin = null) {
+  if (process.platform !== 'win32') return
+  const apply = (win) => {
+    if (!win || win.isDestroyed()) return
+    try {
+      const acrylic = theme === 'glass' && !hasGlassCustomBg()
+      win.setBackgroundMaterial(acrylic ? 'acrylic' : 'none')
+    } catch (e) {
+      console.warn('[win material]', e.message)
+    }
   }
+  if (targetWin) apply(targetWin)
+  else forEachWindow(apply)
 }
 
 ipcMain.handle('save-config', (_, partial) => {
@@ -576,27 +712,38 @@ ipcMain.handle('sync-mac-vibrancy', (_, theme) => {
   return { ok: true }
 })
 
-ipcMain.handle('consume-initial-file', () => {
-  const p = pendingInitialPath
-  pendingInitialPath = null
+ipcMain.handle('consume-initial-file', (event) => {
+  const win = getWinFromEvent(event)
+  const st = getState(win)
+  const p = st?.initialPath || null
+  if (st) st.initialPath = null
   return p
 })
 
-ipcMain.handle('open-file-by-path', async (_, filePath) => {
+ipcMain.on('report-document-path', (event, filePath) => {
+  const win = getWinFromEvent(event)
+  if (win) registerDocumentPath(win, filePath || null)
+})
+
+ipcMain.handle('open-file-by-path', async (event, filePath) => {
   if (!filePath || !allowedOpenExt(filePath)) return { error: 'unsupported' }
+  const win = getWinFromEvent(event)
   try {
     const abs = path.resolve(filePath)
+    if (tryFocusExistingFile(abs, win)) return { action: 'focused-existing' }
     const content = fs.readFileSync(abs, 'utf8')
     addRecent(abs)
+    registerDocumentPath(win, abs)
     return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
   } catch (e) {
     return { error: String(e.message) }
   }
 })
 
-ipcMain.handle('open-file', async () => {
+ipcMain.handle('open-file', async (event) => {
+  const win = getWinFromEvent(event)
   const codeExts = [...CODE_DOC_READONLY_EXT].map(e => e.slice(1))
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
     filters: [
       { name: 'Markdown 与文本', extensions: ['md', 'markdown', 'txt'] },
@@ -606,9 +753,11 @@ ipcMain.handle('open-file', async () => {
   if (canceled || !filePaths || !filePaths[0]) return null
   const filePath = filePaths[0]
   if (!allowedOpenExt(filePath)) return { error: 'unsupported' }
+  const abs = path.resolve(filePath)
+  if (tryFocusExistingFile(abs, win)) return { action: 'focused-existing' }
   const content = fs.readFileSync(filePath, 'utf8')
   addRecent(filePath)
-  const abs = path.resolve(filePath)
+  registerDocumentPath(win, abs)
   return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
 })
 
@@ -621,41 +770,66 @@ ipcMain.handle('read-file', async (_, filePath) => {
   }
 })
 
-ipcMain.handle('save-file', async (_, { filePath, content }) => {
+ipcMain.handle('save-file', async (event, { filePath, content }) => {
+  const win = getWinFromEvent(event)
   if (filePath) {
     if (isReadOnlyCodeDoc(filePath)) return { error: 'read-only-doc' }
     try {
       fs.writeFileSync(filePath, content, 'utf8')
       addRecent(filePath)
-      return filePath
+      const abs = path.resolve(filePath)
+      registerDocumentPath(win, abs)
+      return abs
     } catch (e) {
       return { error: String(e.message) }
     }
   }
-  return saveAsDialog(content, { title: '保存' })
+  return saveAsDialog(content, { title: '保存' }, win)
 })
 
-ipcMain.handle('save-file-as', async (_, { content }) => saveAsDialog(content, { title: '另存为' }))
+ipcMain.handle('save-file-as', async (event, { content }) => {
+  const win = getWinFromEvent(event)
+  const result = await saveAsDialog(content, { title: '另存为' }, win)
+  if (result && !result.error) registerDocumentPath(win, result)
+  return result
+})
 
-ipcMain.handle('new-file', async (_, { hasChanges }) => {
-  if (!hasChanges) return { action: 'discard' }
-  const r = await dialog.showMessageBox(mainWindow, {
+ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-only' }) => {
+  const win = getWinFromEvent(event)
+  if (hasChanges) {
+    const r = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['保存', '不保存', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      message: '是否保存对当前文档的更改？'
+    })
+    if (r.response === 2) return { action: 'cancel' }
+    if (r.response === 0) return { action: 'save' }
+  }
+  if (promptTarget !== 'new-document') return { action: 'discard' }
+  const r2 = await dialog.showMessageBox(win, {
     type: 'question',
-    buttons: ['保存', '不保存', '取消'],
+    buttons: ['新窗口', '当前窗口', '取消'],
     defaultId: 0,
     cancelId: 2,
-    message: '是否保存对当前文档的更改？'
+    message: '新建文档',
+    detail: '是否在新窗口中打开空白文档？'
   })
-  if (r.response === 2) return { action: 'cancel' }
-  if (r.response === 0) return { action: 'save' }
-  return { action: 'discard' }
+  if (r2.response === 2) return { action: 'cancel' }
+  if (r2.response === 0) {
+    focusWindow(createWindow())
+    return { action: 'new-window' }
+  }
+  return { action: 'current-window' }
 })
 
 ipcMain.handle('get-recent-files', () => [...(config.recentFiles || [])])
 
-ipcMain.handle('export-html', async (_, { html, title }) => {
+ipcMain.handle('export-html', async (event, { html, title }) => {
+  const win = getWinFromEvent(event)
   const safeTitle = (title || 'export').replace(/[\\/:*?"<>|]/g, '_')
-  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
     title: '导出 HTML',
     defaultPath: `${safeTitle}.html`,
     filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
@@ -752,14 +926,15 @@ body {
 </html>`
 }
 
-ipcMain.handle('export-pdf', async (_, { html, title, theme, fontFamily }) => {
+ipcMain.handle('export-pdf', async (event, { html, title, theme, fontFamily }) => {
+  const win = getWinFromEvent(event)
   const safeTitle = (title || 'export').replace(/[\\/:*?"<>|]/g, '_')
-  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
     title: '导出 PDF',
     defaultPath: `${safeTitle}.pdf`,
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   })
-  if (canceled || !filePath || !mainWindow) return { error: 'cancelled' }
+  if (canceled || !filePath || !win) return { error: 'cancelled' }
   const t = theme || config.theme || 'light'
   const ff = fontFamily !== undefined && fontFamily !== null ? fontFamily : (config.fontFamily || 'system')
   const wrapped = buildPdfExportDocument({ html, title, theme: t, fontFamily: ff })
@@ -785,9 +960,10 @@ ipcMain.handle('export-pdf', async (_, { html, title, theme, fontFamily }) => {
   }
 })
 
-ipcMain.handle('xhs-export-pick-dir', async () => {
-  if (!mainWindow) return { cancelled: true }
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('xhs-export-pick-dir', async (event) => {
+  const win = getWinFromEvent(event)
+  if (!win) return { cancelled: true }
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     title: '选择保存位置（将在此创建以文档标题命名的文件夹并放入短图）',
     properties: ['openDirectory', 'createDirectory']
   })
@@ -795,10 +971,11 @@ ipcMain.handle('xhs-export-pick-dir', async () => {
   return { path: filePaths[0] }
 })
 
-ipcMain.handle('xhs-export-save-long-path', async (_, { defaultTitle }) => {
-  if (!mainWindow) return { cancelled: true }
+ipcMain.handle('xhs-export-save-long-path', async (event, { defaultTitle }) => {
+  const win = getWinFromEvent(event)
+  if (!win) return { cancelled: true }
   const safeTitle = (defaultTitle || 'export').replace(/[\\/:*?"<>|]/g, '_')
-  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
     title: '导出长图 PNG',
     defaultPath: `${safeTitle}.png`,
     filters: [{ name: 'PNG', extensions: ['png'] }]
@@ -833,8 +1010,9 @@ ipcMain.handle('xhs-export-write-many', async (_, { parentPath, folderName, file
   }
 })
 
-ipcMain.handle('pick-bg-image', async () => {
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('pick-bg-image', async (event) => {
+  const win = getWinFromEvent(event)
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
     filters: [{ name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }]
   })
@@ -879,8 +1057,9 @@ ipcMain.handle('load-bg-image-data-url', async (_, filePath) => {
   }
 })
 
-ipcMain.handle('pick-music-folder', async () => {
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('pick-music-folder', async (event) => {
+  const win = getWinFromEvent(event)
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     properties: ['openDirectory']
   })
   if (canceled || !filePaths || !filePaths[0]) return null
@@ -916,8 +1095,9 @@ ipcMain.handle('get-ambient-audio-url', (_, type) => {
   }
 })
 
-ipcMain.handle('workspace-pick-root', async () => {
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('workspace-pick-root', async (event) => {
+  const win = getWinFromEvent(event)
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     title: '选择工作区文件夹',
     properties: ['openDirectory', 'createDirectory']
   })
@@ -1059,21 +1239,25 @@ ipcMain.handle('workspace-rename', (_, relPath, newName) => {
   }
 })
 
-ipcMain.handle('workspace-read-file', (_, relPath) => {
+ipcMain.handle('workspace-read-file', (event, relPath) => {
+  const win = getWinFromEvent(event)
   const abs = absInWorkspace(relPath)
   if (!abs) return { error: 'invalid-path' }
   if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return { error: 'not-file' }
   if (!allowedOpenExt(abs)) return { error: 'unsupported' }
+  if (tryFocusExistingFile(abs, win)) return { action: 'focused-existing' }
   try {
     const content = fs.readFileSync(abs, 'utf8')
     addRecent(abs)
+    registerDocumentPath(win, abs)
     return { content, filePath: abs, readOnly: isReadOnlyCodeDoc(abs) }
   } catch (e) {
     return { error: String(e.message) }
   }
 })
 
-ipcMain.handle('import-markdown-image', async (_, { mdFilePath }) => {
+ipcMain.handle('import-markdown-image', async (event, { mdFilePath }) => {
+  const win = getWinFromEvent(event)
   const root = workspaceRootResolved()
   let baseDir = null
   if (mdFilePath) {
@@ -1086,7 +1270,7 @@ ipcMain.handle('import-markdown-image', async (_, { mdFilePath }) => {
   if (!baseDir || !fs.existsSync(baseDir)) {
     return { error: '请先保存当前文档，或在侧栏选择工作区根文件夹。' }
   }
-  const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
     title: '插入图片',
     properties: ['openFile'],
     filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'] }]

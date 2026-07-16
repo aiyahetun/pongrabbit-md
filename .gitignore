@@ -9,6 +9,7 @@
 **/dist3/
 **/dist4/
 **/dist-install/
+**/dist-*/
 **/out/
 *.log
 npm-debug.log*

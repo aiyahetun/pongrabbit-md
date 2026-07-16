@@ -83,9 +83,6 @@ async function init() {
   else body.classList.add('platform-linux')
   const appIconEl = $('app-icon')
   if (appIconEl && window.appIconSrc) appIconEl.src = window.appIconSrc
-  if (window.mobiAPI.onOpenFilePath) {
-    window.mobiAPI.onOpenFilePath(p => { openFileFromPath(p) })
-  }
   cfg = await window.mobiAPI.getConfig()
   await applyConfig(cfg)
   setupModeTabs()
@@ -130,9 +127,14 @@ async function openFileFromPath(filePath) {
   if (!filePath) return
   const r = await window.mobiAPI.openFileByPath(filePath)
   if (!r || r.error) return
+  if (r.action === 'focused-existing') return
   applyOpenedDocument(r)
   await loadRecentFiles()
   await refreshWorkspaceTree()
+}
+
+function reportDocumentPathToMain (p) {
+  if (window.mobiAPI.reportDocumentPath) window.mobiAPI.reportDocumentPath(p || null)
 }
 
 function fileExtLower (p) {
@@ -190,6 +192,7 @@ function applyOpenedDocument (r) {
   renderPreview().then(() => renderOutlineList())
   updateStatus()
   resetEditorHistory()
+  reportDocumentPathToMain(r.filePath)
 }
 
 function applySidebarTab (tab, save = true) {
@@ -945,19 +948,27 @@ function getCurrentMd(){
   return richToMd()
 }
 async function newFile(){
-  const r=await window.mobiAPI.newFile({hasChanges:isModified})
-  if(r.action==='save')await saveFile()
-  if(r.action!=='cancel'){
+  let r=await window.mobiAPI.newFile({hasChanges:isModified,promptTarget:'new-document'})
+  if(r.action==='cancel')return
+  if(r.action==='save'){
+    await saveFile()
+    r=await window.mobiAPI.newFile({hasChanges:false,promptTarget:'new-document'})
+    if(r.action==='cancel')return
+  }
+  if(r.action==='new-window')return
+  if(r.action==='current-window'){
     richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
     resetEditorHistory()
     setModified(false);setTitle('无题文档');updateStatus()
     refreshOutline()
+    reportDocumentPathToMain(null)
   }
 }
 async function openFile(){
   const r=await window.mobiAPI.openFile()
   if(!r)return
   if(r.error){alert(r.error==='unsupported'?'不支持的文件类型。':'无法打开文件。');return}
+  if(r.action==='focused-existing')return
   applyOpenedDocument(r)
   await loadRecentFiles();await refreshWorkspaceTree()
 }
@@ -2349,12 +2360,13 @@ async function loadRecentFiles(){
     const el=document.createElement('div');el.className='recent-item';el.textContent=bn(f);el.title=f
     el.onclick=async()=>{
       if(isModified){
-        const resp=await window.mobiAPI.newFile({hasChanges:true})
+        const resp=await window.mobiAPI.newFile({hasChanges:true,promptTarget:'discard-only'})
         if(resp.action==='cancel')return
         if(resp.action==='save')await saveFile()
       }
-      const r=await window.mobiAPI.readFile(f);if(!r||r.error)return
-      applyOpenedDocument({ content: r.content, filePath: r.filePath || f, readOnly: isReadOnlyCodePath(f) })
+      const r=await window.mobiAPI.openFileByPath(f);if(!r||r.error)return
+      if(r.action==='focused-existing')return
+      applyOpenedDocument(r)
       await refreshWorkspaceTree()
     }
     list.appendChild(el)
@@ -3599,12 +3611,13 @@ async function refreshWorkspaceTree(){
 
 async function openWorkspaceRelFile(relPath){
   if(isModified){
-    const resp=await window.mobiAPI.newFile({hasChanges:true})
+    const resp=await window.mobiAPI.newFile({hasChanges:true,promptTarget:'discard-only'})
     if(resp.action==='cancel')return
     if(resp.action==='save')await saveFile()
   }
   const r=await window.mobiAPI.workspaceReadFile(relPath)
   if(!r||r.error)return
+  if(r.action==='focused-existing')return
   applyOpenedDocument(r)
   await loadRecentFiles()
   await refreshWorkspaceTree()

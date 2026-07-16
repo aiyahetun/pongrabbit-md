@@ -1,7 +1,7 @@
 {
   "name": "pongrabbit-md",
-  "version": "1.0.2",
-  "description": "pongrabbit-MD — Markdown 编辑器",
+  "version": "1.0.3",
+  "description": "pongrabbit-MD — 会呼吸的 Markdown 桌面创作空间：多窗口、毛玻璃、工作区与一键导出",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",

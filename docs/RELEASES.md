@@ -6,12 +6,14 @@
 
 ## 用户下载什么？
 
-| 平台 | 推荐文件 | 说明 |
+| 平台 | 推荐文件（以 **1.0.3** 为例） | 说明 |
 |------|-----------|------|
-| **macOS（Intel）** | `pongrabbit-MD-1.0.0.dmg` | 双击挂载，将应用拖入「应用程序」。 |
-| **macOS（Intel，备选）** | `pongrabbit-MD-1.0.0.zip` | 解压后将 `.app` 拖入「应用程序」。 |
-| **Windows** | `pongrabbit-MD Setup 1.0.0.exe` | NSIS 安装向导，可选安装目录。 |
-| **Windows（便携）** | `pongrabbit-MD 1.0.0.exe` | 单文件便携版，无需安装（若已提供）。 |
+| **macOS（Intel）** | `pongrabbit-MD-1.0.3.dmg` | 双击挂载，将应用拖入「应用程序」。 |
+| **macOS（Intel，备选）** | `pongrabbit-MD-1.0.3.zip` | 解压后将 `.app` 拖入「应用程序」。 |
+| **Windows** | `pongrabbit-MD Setup 1.0.3.exe` | NSIS 安装向导，可选安装目录。 |
+| **Windows（便携）** | `pongrabbit-MD 1.0.3.exe` | 单文件便携版，无需安装（若已提供）。 |
+
+历史版本说明见 [`CHANGELOG.md`](../CHANGELOG.md)；各版 Release 正文见 `docs/RELEASE_NOTES_vX.Y.Z.md`。
 
 - **Apple Silicon（M 系列）**：当前默认构建为 **Intel (x64)**，可在 Rosetta 下运行；若需原生通用包，在 `mobimark_source/mobimark` 下执行 `npm run build-mac-universal`（需网络稳定以下载 arm64 Electron）。
 - **未签名 / 未公证**：macOS 首次打开若被拦截，请对应用 **右键 → 打开**；Windows 可能出现 SmartScreen 提示，选「仍要运行」。
@@ -38,9 +40,9 @@ npm run build              # 生成 Windows 安装包 + 便携版（建议在 Wi
 ### 方式 A：网页操作（最通用）
 
 1. 打开仓库 **Releases** → **Draft a new release**。
-2. **Choose a tag**：新建标签，例如 `v1.0.0`（与 `package.json` 的 `version` 一致）。
-3. **Release title**：例如 `pongrabbit-MD 1.0.0`。
-4. 将 **`docs/RELEASE_NOTES_v1.0.0.md`** 中正文复制到描述框（或按需修改）。
+2. **Choose a tag**：新建标签，例如 `v1.0.3`（与 `package.json` 的 `version` 一致）。
+3. **Release title**：例如 `pongrabbit-MD 1.0.3 — 多窗口，多灵感`。
+4. 将 **`docs/RELEASE_NOTES_v1.0.3.md`** 中正文复制到描述框（或按需修改）。
 5. 将 `dist` 中的 **`.dmg`、`.zip`、`.exe`** 拖入 **Attach binaries**。
 6. 发布 **Publish release**。
 
