@@ -83,15 +83,28 @@ function registerDocumentPath (win, filePath) {
   if (key) filePathToWindow.set(key, win.webContents.id)
 }
 
-function unregisterWindow (win) {
-  if (!win) return
-  const id = win.webContents.id
+function unregisterWindowById (id) {
+  if (!id) return
   const state = windowStates.get(id)
   if (state) {
     const key = normalizeOpenPath(state.documentPath)
     if (key && filePathToWindow.get(key) === id) filePathToWindow.delete(key)
   }
   windowStates.delete(id)
+}
+
+function unregisterWindow (win) {
+  if (!win) return
+  if (win.isDestroyed()) {
+    for (const [id, state] of windowStates.entries()) {
+      if (state.win === win) {
+        unregisterWindowById(id)
+        return
+      }
+    }
+    return
+  }
+  unregisterWindowById(win.webContents.id)
 }
 
 function findWindowByFilePath (filePath) {
@@ -492,7 +505,8 @@ function createWindow (initialFilePath = null) {
     }
     sendWinState(win)
   })
-  win.on('closed', () => { unregisterWindow(win) })
+  const wcId = win.webContents.id
+  win.on('closed', () => { unregisterWindowById(wcId) })
   const th = config.theme || 'light'
   syncMacVibrancy(th, win)
   syncWinGlassMaterial(th, win)

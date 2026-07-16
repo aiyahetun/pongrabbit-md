@@ -114,6 +114,7 @@ async function init() {
   if (cfg.pendingContent) {
     mdEditor.value = cfg.pendingContent
     richEditor.innerHTML = md2html(cfg.pendingContent)
+    attachCodeBlockCopyButtons(richEditor)
     window.mobiAPI.saveConfig({ pendingContent: '' })
     renderPreview()
   }
@@ -177,6 +178,7 @@ function applyOpenedDocument (r) {
   if (!r || !r.filePath) return
   mdEditor.value = r.content
   richEditor.innerHTML = md2html(r.content)
+  attachCodeBlockCopyButtons(richEditor)
   currentFile = r.filePath
   readOnlyDoc = inferReadOnlyFromOpen(r)
   syncReadOnlyUi()
@@ -563,26 +565,164 @@ function plainOffsetToMdIndex (md, plainOffset) {
   return lo
 }
 
-function captureEditorPlainOffset () {
-  if (document.activeElement === mdEditor) {
-    return mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+const VIEWPORT_ANCHOR_RATIO = 0.12
+
+function plainOffsetFromRangeIn (root, range) {
+  const pre = range.cloneRange()
+  pre.selectNodeContents(root)
+  pre.setEnd(range.startContainer, range.startOffset)
+  return pre.toString().length
+}
+
+function plainOffsetFromCaretRangeAt (root, x, y) {
+  if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(x, y)
+    if (range && range.startContainer && root.contains(range.startContainer)) {
+      return plainOffsetFromRangeIn(root, range)
+    }
   }
-  if (richEditor.contains(document.activeElement) || document.activeElement === richEditor) {
-    return getRichCaretOffset()
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(x, y)
+    if (pos && pos.offsetNode && root.contains(pos.offsetNode)) {
+      const range = document.createRange()
+      range.setStart(pos.offsetNode, pos.offset)
+      range.collapse(true)
+      return plainOffsetFromRangeIn(root, range)
+    }
   }
-  if (_lastSrc === 'md') return mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+  return null
+}
+
+function getRichViewportPlainOffset () {
+  const rect = richEditor.getBoundingClientRect()
+  if (rect.height > 0) {
+    const x = rect.left + Math.min(48, rect.width * 0.15)
+    const y = rect.top + Math.min(56, rect.height * VIEWPORT_ANCHOR_RATIO)
+    const po = plainOffsetFromCaretRangeAt(richEditor, x, y)
+    if (po != null) return po
+  }
+  if (isRichFocused()) return getRichCaretOffset()
+  const lineH = parseInt(window.getComputedStyle(richEditor).lineHeight, 10) || 24
+  const blocks = richEditor.querySelectorAll('p,h1,h2,h3,h4,li,pre,blockquote,table,div')
+  const targetY = richEditor.scrollTop + lineH
+  for (const block of blocks) {
+    if (block.offsetTop + block.offsetHeight > targetY) {
+      const range = document.createRange()
+      range.setStart(block, 0)
+      range.collapse(true)
+      return plainOffsetFromRangeIn(richEditor, range)
+    }
+  }
   return getRichCaretOffset()
 }
 
-function setMdCaretFromPlain (plainOffset) {
+function getMdViewportPlainOffset () {
+  const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
+  const padTop = parseInt(window.getComputedStyle(mdEditor).paddingTop, 10) || 0
+  const line = Math.max(0, Math.floor((mdEditor.scrollTop + padTop + lineH * VIEWPORT_ANCHOR_RATIO) / lineH))
+  let charIdx = 0
+  for (let i = 0; i < line; i++) {
+    const nl = mdEditor.value.indexOf('\n', charIdx)
+    if (nl === -1) { charIdx = mdEditor.value.length; break }
+    charIdx = nl + 1
+  }
+  return mdPlainLenAt(mdEditor.value, charIdx)
+}
+
+function getPreviewViewportPlainOffset () {
+  const rect = previewPane.getBoundingClientRect()
+  if (rect.height <= 0) return 0
+  const x = rect.left + Math.min(48, rect.width * 0.15)
+  const y = rect.top + Math.min(56, rect.height * VIEWPORT_ANCHOR_RATIO)
+  const po = plainOffsetFromCaretRangeAt(previewEl, x, y)
+  if (po != null) return po
+  return 0
+}
+
+function captureEditorPlainOffset () {
+  if (editMode === 'markdown') return getMdViewportPlainOffset()
+  if (editMode === 'preview') return getPreviewViewportPlainOffset()
+  if (editMode === 'split') {
+    if (isMdFocused()) return getMdViewportPlainOffset()
+    return getRichViewportPlainOffset()
+  }
+  return getRichViewportPlainOffset()
+}
+
+function scrollMdToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
   const mp = plainOffsetToMdIndex(mdEditor.value, plainOffset)
   mdEditor.setSelectionRange(mp, mp)
-  scrollMdCaretIntoView()
+  const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
+  const before = mdEditor.value.slice(0, mp)
+  const line = (before.match(/\n/g) || []).length
+  mdEditor.scrollTop = Math.max(0, line * lineH - mdEditor.clientHeight * ratio)
+}
+
+function scrollRichToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
+  setRichCaretOffset(plainOffset)
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return
+  let node = sel.getRangeAt(0).startContainer
+  if (node.nodeType === 3) node = node.parentElement
+  if (!node) return
+  const editorRect = richEditor.getBoundingClientRect()
+  const nodeRect = node.getBoundingClientRect()
+  const targetTop = editorRect.top + richEditor.clientHeight * ratio
+  richEditor.scrollTop = Math.max(0, richEditor.scrollTop + (nodeRect.top - targetTop))
+}
+
+function scrollPreviewToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
+  const walker = document.createTreeWalker(previewEl, NodeFilter.SHOW_TEXT)
+  let cum = 0
+  let node
+  while ((node = walker.nextNode())) {
+    const len = node.textContent.length
+    if (cum + len >= plainOffset) {
+      const el = node.parentElement
+      if (!el) return
+      const paneTop = previewPane.getBoundingClientRect().top
+      const elTop = el.getBoundingClientRect().top
+      const targetTop = paneTop + previewPane.clientHeight * ratio
+      previewPane.scrollTop = Math.max(0, previewPane.scrollTop + (elTop - targetTop))
+      return
+    }
+    cum += len
+  }
+}
+
+function afterEditorLayout (fn) {
+  requestAnimationFrame(() => requestAnimationFrame(fn))
+}
+
+function restoreViewAtPlainOffset (plainOffset, mode, focusMd) {
+  afterEditorLayout(() => {
+    switch (mode) {
+      case 'wysiwyg':
+        scrollRichToPlainOffset(plainOffset)
+        break
+      case 'markdown':
+        scrollMdToPlainOffset(plainOffset)
+        break
+      case 'split':
+        scrollRichToPlainOffset(plainOffset)
+        scrollMdToPlainOffset(plainOffset)
+        if (focusMd) mdEditor.focus()
+        else richEditor.focus()
+        break
+      case 'preview':
+        scrollPreviewToPlainOffset(plainOffset)
+        break
+    }
+  })
+}
+
+function setMdCaretFromPlain (plainOffset) {
+  scrollMdToPlainOffset(plainOffset)
 }
 
 function setBothCaretsFromPlain (plainOffset) {
   setRichCaretOffset(plainOffset)
-  setMdCaretFromPlain(plainOffset)
+  scrollMdToPlainOffset(plainOffset)
 }
 
 function syncEditorsFromWysiwyg (plainOffset) {
@@ -605,6 +745,7 @@ function syncEditorsFromMd (plainOffset) {
   const richScroll = richEditor.scrollTop
   const richFocused = document.activeElement === richEditor
   richEditor.innerHTML = md2html(mdEditor.value)
+  attachCodeBlockCopyButtons(richEditor)
   setRichCaretOffset(po)
   if (!richFocused) richEditor.scrollTop = richScroll
   _editorSyncing = false
@@ -703,19 +844,18 @@ function setMode(mode) {
       showFlex(wysiwygPane); hide(mdPane); hide(previewPane); hide(resizerEl)
       wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
       richEditor.focus()
-      setRichCaretOffset(plainBefore)
-      scrollRichCaretIntoView()
+      restoreViewAtPlainOffset(plainBefore, 'wysiwyg')
       break
     case 'markdown':
       hide(wysiwygPane); showFlex(mdPane); hide(previewPane); hide(resizerEl)
       mdPane.style.flex = '1'; mdPane.style.width = ''
       mdEditor.focus()
-      setMdCaretFromPlain(plainBefore)
+      restoreViewAtPlainOffset(plainBefore, 'markdown')
       break
     case 'preview':
       hide(wysiwygPane); hide(mdPane); showFlex(previewPane); hide(resizerEl)
       previewPane.style.flex = '1'; previewPane.style.width = ''
-      renderPreview()
+      renderPreview().then(() => restoreViewAtPlainOffset(plainBefore, 'preview'))
       break
     case 'split':
       showFlex(wysiwygPane); showFlex(mdPane); hide(previewPane); show(resizerEl)
@@ -723,8 +863,7 @@ function setMode(mode) {
       mdPane.style.flex = '1'; mdPane.style.width = ''
       if (focusMd) mdEditor.focus()
       else richEditor.focus()
-      setBothCaretsFromPlain(plainBefore)
-      if (!focusMd) scrollRichCaretIntoView()
+      restoreViewAtPlainOffset(plainBefore, 'split', focusMd)
       break
   }
   const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
@@ -824,9 +963,56 @@ function insertCodeBlock(){
   if(sel.rangeCount&&!sel.isCollapsed)sel.getRangeAt(0).deleteContents()
   pre.appendChild(code)
   document.execCommand('insertHTML',false,pre.outerHTML)
+  attachCodeBlockCopyButtons(richEditor)
   setModified(true)
   recordRichHistory()
   scheduleRender()
+}
+
+async function copyTextToClipboard (text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch (_) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+    document.body.appendChild(ta)
+    ta.select()
+    let ok = false
+    try { ok = document.execCommand('copy') } catch (_e) {}
+    ta.remove()
+    return ok
+  }
+}
+
+function attachCodeBlockCopyButtons (root) {
+  if (!root) return
+  root.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector(':scope > .code-copy-btn')) return
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'code-copy-btn'
+    btn.title = '复制代码'
+    btn.setAttribute('aria-label', '复制代码')
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+    btn.addEventListener('click', async e => {
+      e.preventDefault()
+      e.stopPropagation()
+      const codeEl = pre.querySelector('code') || pre
+      const text = codeEl.textContent || ''
+      if (!text) return
+      const ok = await copyTextToClipboard(text)
+      if (!ok) return
+      btn.classList.add('copied')
+      btn.title = '已复制'
+      setTimeout(() => {
+        btn.classList.remove('copied')
+        btn.title = '复制代码'
+      }, 1500)
+    })
+    pre.appendChild(btn)
+  })
 }
 
 // ════ MD 工具栏 ══════════════════════════════════════════════
@@ -1069,6 +1255,7 @@ async function renderPreview(){
       cb.addEventListener('change',()=>{cb.checked=!cb.checked})
     })
     applyOutlineIdsToPreview()
+    attachCodeBlockCopyButtons(previewEl)
   }catch(err){previewEl.innerHTML='<pre style="color:red;padding:20px">'+escHtml(String(err))+'</pre>'}
 }
 

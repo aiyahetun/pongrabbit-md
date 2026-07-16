@@ -1,6 +1,6 @@
 {
   "name": "pongrabbit-md",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "pongrabbit-MD — 会呼吸的 Markdown 桌面创作空间：多窗口、毛玻璃、工作区与一键导出",
   "main": "src/main/main.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "productName": "pongrabbit-MD",
     "copyright": "Copyright © 2026 pongrabbit-MD",
     "directories": {
-      "output": "dist"
+      "output": "dist-1.0.5"
     },
     "win": {
       "target": [
