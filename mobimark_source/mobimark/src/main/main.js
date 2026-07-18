@@ -563,7 +563,9 @@ function buildMenu () {
         { type: 'separator' },
         { role: 'selectAll' },
         { type: 'separator' },
-        { label: '查找…', accelerator: 'CmdOrCtrl+F', click: () => send('menu-find') }
+        { label: '查找…', accelerator: 'CmdOrCtrl+F', click: () => send('menu-find') },
+        { type: 'separator' },
+        { label: '整理多余空行', click: () => send('menu-compact-blanks') }
       ]
     },
     {

@@ -2,9 +2,11 @@
 const { contextBridge, ipcRenderer } = require('electron')
 const path = require('path')
 const { pathToFileURL } = require('url')
+const pkg = require('../../package.json')
 
 /** 必须先注册 IPC 桥接；若在之前抛错会导致 window.mobiAPI 不存在 → 初始化失败 */
 contextBridge.exposeInMainWorld('pengPlatform', process.platform)
+contextBridge.exposeInMainWorld('appVersion', pkg.version || '')
 
 contextBridge.exposeInMainWorld('mobiAPI', {
   debugSessionLog: (entry) => ipcRenderer.invoke('debug-session-log', entry),
@@ -59,7 +61,7 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   onMenu: (cb) => {
     ['menu-new', 'menu-open', 'menu-save', 'menu-save-as', 'menu-export-html',
       'menu-export-xhs-short', 'menu-export-xhs-long',
-      'menu-find', 'menu-toggle-preview', 'menu-focus-mode', 'menu-theme']
+      'menu-find', 'menu-compact-blanks', 'menu-toggle-preview', 'menu-focus-mode', 'menu-theme']
       .forEach(e => ipcRenderer.on(e, (_, ...args) => cb(e, ...args)))
   }
 })
