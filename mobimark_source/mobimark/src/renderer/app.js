@@ -49,6 +49,7 @@ let editMode='wysiwyg'  // wysiwyg | markdown | preview | split
 let _lastSrc='wysiwyg' // last edited source
 let _editorSyncing=false
 let renderTimer=null
+let outlineTimer=null
 let outlineItems=[]
 let activeOutlineIdx=-1
 let outlineCollapsedH2=new Set()
@@ -191,7 +192,7 @@ function applyOpenedDocument (r) {
     _lastSrc = 'wysiwyg'
     setMode('wysiwyg')
   }
-  renderPreview().then(() => renderOutlineList())
+  renderPreview().then(() => refreshOutline())
   updateStatus()
   resetEditorHistory()
   reportDocumentPathToMain(r.filePath)
@@ -653,9 +654,10 @@ function scrollMdToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
   const mp = plainOffsetToMdIndex(mdEditor.value, plainOffset)
   mdEditor.setSelectionRange(mp, mp)
   const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
+  const padTop = parseInt(window.getComputedStyle(mdEditor).paddingTop, 10) || 0
   const before = mdEditor.value.slice(0, mp)
   const line = (before.match(/\n/g) || []).length
-  mdEditor.scrollTop = Math.max(0, line * lineH - mdEditor.clientHeight * ratio)
+  mdEditor.scrollTop = Math.max(0, padTop + line * lineH - mdEditor.clientHeight * ratio)
 }
 
 function scrollRichToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
@@ -933,7 +935,14 @@ function setupRichEditor(){
   $('r-hr').onclick=()=>document.execCommand('insertHorizontalRule')
   $('btn-find-r').onclick=()=>showFindBar()
   $('heading-select').onchange=function(){
-    document.execCommand('formatBlock',false,this.value==='p'?'<p>':'<'+this.value+'>');richEditor.focus()
+    document.execCommand('formatBlock',false,this.value==='p'?'<p>':'<'+this.value+'>')
+    richEditor.focus()
+    _lastSrc='wysiwyg'
+    recordRichHistory()
+    setModified(true)
+    scheduleOutlineRefresh()
+    scheduleRender()
+    updateStatus()
   }
 }
 
@@ -1222,11 +1231,16 @@ function updateStatus(){
 }
 
 // ════ 预览渲染 ══════════════════════════════════════════════
+function scheduleOutlineRefresh () {
+  clearTimeout(outlineTimer)
+  outlineTimer = setTimeout(() => refreshOutline(), 120)
+}
+
 function scheduleRender(){
   clearTimeout(renderTimer)
+  scheduleOutlineRefresh()
   renderTimer=setTimeout(async()=>{
     await renderPreview()
-    renderOutlineList()
   },200)
 }
 async function renderPreview(){
@@ -1234,7 +1248,6 @@ async function renderPreview(){
   try{
     window.marked.setOptions({breaks:true,gfm:true})
     const md=getCurrentMd()
-    outlineItems=parseHeadingsFromMd(md)
     const src=md.replace(/^([ \t]*[-*+] )\[([ xX])\] /gm,(_,b,c)=>`${b}<input type="checkbox" ${c!=' '?'checked':''}> `)
     previewEl.innerHTML=window.marked.parse(src)
     if(window.hljsAPI){
@@ -1428,7 +1441,7 @@ function getOutlineSpyRoot () {
 
 function getOutlineSpyIndexFromScroll () {
   if (!outlineItems.length) return -1
-  if (editMode === 'markdown' || (editMode === 'split' && _lastSrc === 'md')) {
+  if (editMode === 'markdown' || (editMode === 'split' && isMdFocused())) {
     const lineH = parseFloat(window.getComputedStyle(mdEditor).lineHeight) || 24
     const padTop = parseFloat(window.getComputedStyle(mdEditor).paddingTop) || 36
     const scrollLine = Math.max(0, Math.floor((mdEditor.scrollTop + padTop + lineH * 0.5) / lineH))
@@ -1460,7 +1473,7 @@ function setupOutlineSpy () {
   const root = getOutlineSpyRoot()
   if (!root || !outlineItems.length) return
 
-  if (editMode === 'markdown' || (editMode === 'split' && document.activeElement === mdEditor)) {
+  if (editMode === 'markdown' || (editMode === 'split' && isMdFocused())) {
     const onScroll = () => {
       if (Date.now() < outlineSpyPausedUntil) return
       const idx = getOutlineSpyIndexFromScroll()
@@ -1519,23 +1532,28 @@ function setupOutlineSpy () {
   }
 }
 
+function outlineItemToPlainOffset (item) {
+  const md = getCurrentMd()
+  let charIdx = 0
+  const lines = String(md || '').split('\n')
+  const lineIndex = Math.min(item.lineIndex, lines.length)
+  for (let i = 0; i < lineIndex; i++) charIdx += lines[i].length + 1
+  return mdPlainLenAt(md, charIdx)
+}
+
 function scrollMdToLine (lineIndex) {
-  const lineH = parseFloat(window.getComputedStyle(mdEditor).lineHeight) || 24
-  const padTop = parseFloat(window.getComputedStyle(mdEditor).paddingTop) || 36
-  mdEditor.scrollTop = Math.max(0, lineIndex * lineH + padTop - mdEditor.clientHeight * 0.12)
-  let pos = 0
-  const lines = mdEditor.value.split('\n')
-  for (let i = 0; i < lineIndex && i < lines.length; i++) pos += lines[i].length + 1
-  mdEditor.setSelectionRange(pos, pos)
-  mdEditor.focus()
+  const md = getCurrentMd()
+  let charIdx = 0
+  const lines = md.split('\n')
+  const li = Math.min(lineIndex, lines.length)
+  for (let i = 0; i < li; i++) charIdx += lines[i].length + 1
+  scrollMdToPlainOffset(mdPlainLenAt(md, charIdx))
 }
 
 function scrollRichToHeadingIndex (idx) {
-  const headings = richEditor.querySelectorAll('h1,h2,h3')
-  const el = headings[idx]
-  if (!el) return
-  richEditor.scrollTo({ top: Math.max(0, el.offsetTop - 24), behavior: 'smooth' })
-  richEditor.focus()
+  const item = outlineItems[idx]
+  if (!item) return
+  scrollRichToPlainOffset(outlineItemToPlainOffset(item))
 }
 
 function scrollPreviewToSlug (slug) {
@@ -1544,7 +1562,7 @@ function scrollPreviewToSlug (slug) {
   const paneTop = previewPane.getBoundingClientRect().top
   const elTop = el.getBoundingClientRect().top
   previewPane.scrollTo({
-    top: Math.max(0, previewPane.scrollTop + elTop - paneTop - 16),
+    top: Math.max(0, previewPane.scrollTop + elTop - paneTop - previewPane.clientHeight * VIEWPORT_ANCHOR_RATIO),
     behavior: 'smooth'
   })
 }
@@ -1555,19 +1573,32 @@ function navigateToOutlineItem (idx) {
   pauseOutlineSpy()
   setActiveOutlineIdx(idx)
   if (sidebarTab !== 'outline') applySidebarTab('outline')
+
+  if (editMode === 'split') {
+    if (_lastSrc === 'md') syncEditorsFromMd()
+    else syncEditorsFromWysiwyg()
+  }
+
+  const plainOffset = outlineItemToPlainOffset(item)
+
   switch (editMode) {
     case 'preview':
       scrollPreviewToSlug(item.slug)
+      if (!document.getElementById(item.slug)) scrollPreviewToPlainOffset(plainOffset)
       break
     case 'markdown':
-      scrollMdToLine(item.lineIndex)
+      scrollMdToPlainOffset(plainOffset)
+      mdEditor.focus()
       break
     case 'wysiwyg':
-      scrollRichToHeadingIndex(idx)
+      scrollRichToPlainOffset(plainOffset)
+      richEditor.focus()
       break
     case 'split':
-      scrollRichToHeadingIndex(idx)
-      scrollMdToLine(item.lineIndex)
+      scrollRichToPlainOffset(plainOffset)
+      scrollMdToPlainOffset(plainOffset)
+      if (isMdFocused()) mdEditor.focus()
+      else richEditor.focus()
       break
   }
 }
@@ -1737,6 +1768,8 @@ function applyRichHistoryIndex (idx) {
   richEditor.focus()
   setRichCaretOffset(snap.caret || 0)
   _histApplying = false
+  scheduleOutlineRefresh()
+  scheduleRender()
 }
 
 function applyMdHistoryIndex (idx) {
@@ -1747,6 +1780,8 @@ function applyMdHistoryIndex (idx) {
   mdEditor.focus()
   mdEditor.setSelectionRange(snap.start, snap.end)
   _histApplying = false
+  scheduleOutlineRefresh()
+  scheduleRender()
 }
 
 function undoEditorHistory () {
