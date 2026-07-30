@@ -98,6 +98,7 @@ async function init() {
   await applyConfig(cfg)
   setupModeTabs()
   setupRichEditor()
+  setupLinkClickHandlers()
   setupMdToolbar()
   setupTopActions()
   setupStatusBar()
@@ -1399,6 +1400,60 @@ function scheduleRender(){
     await renderPreview()
   },200)
 }
+
+async function openMarkdownLink (href) {
+  const raw = String(href || '').trim()
+  if (!raw || raw === '#') return
+  try {
+    const r = await window.mobiAPI.resolveMarkdownLink(currentFile || '', raw)
+    if (!r) {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) await window.mobiAPI.openExternal(raw)
+      return
+    }
+    if (r.type === 'external') {
+      await window.mobiAPI.openExternal(r.url)
+      return
+    }
+    if (r.type === 'anchor') {
+      scrollPreviewToSlug(r.slug)
+      return
+    }
+    if (r.type === 'local' && r.filePath) {
+      if (r.isDirectory) {
+        await window.mobiAPI.openPath(r.filePath)
+        return
+      }
+      if (allowedOpenExtForLink(r.filePath)) {
+        await openFileFromPath(r.filePath)
+      } else {
+        await window.mobiAPI.openPath(r.filePath)
+      }
+    }
+  } catch (_) {}
+}
+
+function allowedOpenExtForLink (filePath) {
+  const ext = fileExtLower(filePath)
+  return ext === '.md' || ext === '.markdown' || ext === '.txt' || READONLY_CODE_EXTS.has(ext)
+}
+
+function setupLinkClickHandlers () {
+  function onLinkClick (e) {
+    const a = e.target.closest && e.target.closest('a[href]')
+    if (!a) return
+    const inPreview = previewEl.contains(a)
+    const inRich = richEditor.contains(a)
+    if (!inPreview && !inRich) return
+    if (inPreview && editMode !== 'preview') return
+    if (inRich && editMode !== 'wysiwyg' && editMode !== 'split') return
+    e.preventDefault()
+    e.stopPropagation()
+    void openMarkdownLink(a.getAttribute('href'))
+  }
+  previewEl.addEventListener('click', onLinkClick)
+  richEditor.addEventListener('click', onLinkClick)
+}
+
 async function renderPreview(){
   if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">正在渲染预览…</div>';return}
   try{

@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   workspaceReadFile: (rel) => ipcRenderer.invoke('workspace-read-file', rel),
   importMarkdownImage: (opts) => ipcRenderer.invoke('import-markdown-image', opts),
   resolveMarkdownImage: (mdPath, src) => ipcRenderer.invoke('resolve-markdown-image', mdPath, src),
+  resolveMarkdownLink: (mdPath, href) => ipcRenderer.invoke('resolve-markdown-link', mdPath, href),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   /** 本地绝对路径 → file: URL（正确编码中文、空格、全角符号等，供 CSS background / img 使用） */
   pathToFileUrl: (fp) => {
     try {

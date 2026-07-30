@@ -1302,7 +1302,7 @@ body.preview-justify #preview-content{text-align:justify}
 #preview-content h4{font-size:1em}
 #preview-content h1:has(code),#preview-content h2:has(code),#preview-content h3:has(code),#preview-content h4:has(code){text-align:start}
 #preview-content p{margin:.7em 0}
-#preview-content a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(53,97,144,.25)}
+#preview-content a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(53,97,144,.25);cursor:pointer}
 #preview-content strong{font-weight:700;color:var(--pv-h)}
 #preview-content em{font-style:italic}
 /* 行内 code：勿用 box-decoration-break:clone — 多行时 Blink/html2canvas 易把灰底画成细条或高度错位 */
@@ -1698,7 +1698,7 @@ body.preview-justify #preview-content{text-align:justify}
 #rich-editor h3{font-size:1.15em;font-weight:700;color:var(--pv-h);margin:.8em 0 .3em}
 #rich-editor h4{font-size:1em;font-weight:600;color:var(--pv-h);margin:.7em 0 .25em}
 #rich-editor p{margin:.5em 0}
-#rich-editor a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(53,97,144,.25)}
+#rich-editor a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(53,97,144,.25);cursor:pointer}
 #rich-editor blockquote{border-left:4px solid var(--accent);margin:1em 0;padding:6px 0 6px 16px;color:var(--t2);font-style:italic;background:var(--accent-bg);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 #rich-editor code{font-family:var(--font-code);font-size:.875em;background:var(--pv-code);padding:2px 6px;border-radius:4px}
 #rich-editor pre,#preview-content pre{position:relative}

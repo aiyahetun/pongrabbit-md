@@ -473,6 +473,20 @@ function createWindow (initialFilePath = null) {
     }
   })
   win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+      shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    const current = win.webContents.getURL()
+    if (url === current) return
+    if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+      event.preventDefault()
+      shell.openExternal(url).catch(() => {})
+    }
+  })
   win.on('resize', () => {
     const st = getState(win)
     if (process.platform === 'win32' && st && st.winCustomMaximized) {
@@ -1306,6 +1320,73 @@ ipcMain.handle('import-markdown-image', async (event, { mdFilePath }) => {
     return { fileUrl, mdRel }
   } catch (e) {
     return { error: String(e.message) }
+  }
+})
+
+ipcMain.handle('open-external', async (_, url) => {
+  const u = String(url || '').trim()
+  if (!u) return { error: 'empty' }
+  try {
+    await shell.openExternal(u)
+    return { ok: true }
+  } catch (e) {
+    return { error: String(e.message) }
+  }
+})
+
+ipcMain.handle('open-path', async (_, filePath) => {
+  const p = String(filePath || '').trim()
+  if (!p) return { error: 'empty' }
+  try {
+    const err = await shell.openPath(p)
+    if (err) return { error: err }
+    return { ok: true }
+  } catch (e) {
+    return { error: String(e.message) }
+  }
+})
+
+function resolveLocalMarkdownPath (mdFilePath, href) {
+  const s = String(href || '').trim()
+  if (!s) return null
+  if (s.startsWith('file:')) {
+    try {
+      const p = fileURLToPath(s)
+      if (fs.existsSync(p)) return path.resolve(p)
+    } catch (_) {}
+    return null
+  }
+  let base = null
+  if (mdFilePath) {
+    try {
+      base = path.dirname(path.resolve(mdFilePath))
+    } catch (_) {}
+  }
+  const wr = workspaceRootResolved()
+  if (!base && wr) base = wr
+  if (!base || !fs.existsSync(base)) return null
+  const combined = path.isAbsolute(s) ? path.resolve(s) : path.resolve(base, s)
+  try {
+    if (!fs.existsSync(combined)) return null
+    return path.resolve(combined)
+  } catch (_) {
+    return null
+  }
+}
+
+ipcMain.handle('resolve-markdown-link', (_, mdFilePath, href) => {
+  const s = String(href || '').trim()
+  if (!s || s === '#') return null
+  if (/^https?:\/\//i.test(s) || /^mailto:/i.test(s)) return { type: 'external', url: s }
+  if (s.startsWith('#')) return { type: 'anchor', slug: s.slice(1) }
+  const filePath = resolveLocalMarkdownPath(mdFilePath, s)
+  if (!filePath) return null
+  try {
+    const st = fs.statSync(filePath)
+    if (st.isDirectory()) return { type: 'local', filePath, isDirectory: true }
+    return { type: 'local', filePath, isDirectory: false }
+  } catch (_) {
+    return null
   }
 })
 

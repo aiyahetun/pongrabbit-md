@@ -116,6 +116,14 @@ function setupContextMenu () {
   function detectEditorContext (e) {
     const target = e.target
     if (editMode === 'preview') {
+      let node = target
+      if (node.nodeType === 3) node = node.parentElement
+      const a = node && node.closest && node.closest('a[href]')
+      if (a && previewEl.contains(a)) {
+        const sel = window.getSelection()
+        const hasSel = sel && !sel.isCollapsed
+        return { zone: 'preview', kind: 'link', linkEl: a, hasSelection: hasSel }
+      }
       const sel = window.getSelection()
       const hasSel = sel && !sel.isCollapsed
       return { zone: 'preview', hasSelection: hasSel }
@@ -245,13 +253,17 @@ function setupContextMenu () {
       )
     }
 
-    if (c.kind === 'link' && !ro && !prev) {
+    if (c.kind === 'link') {
       items.push({ sep: true })
-      items.push(
-        { id: 'link-open', label: '打开链接' },
-        { id: 'link-edit', label: '编辑链接…' },
-        { id: 'link-unlink', label: '移除链接' }
-      )
+      if (prev) {
+        items.push({ id: 'link-open', label: '打开链接' })
+      } else if (!ro) {
+        items.push(
+          { id: 'link-open', label: '打开链接' },
+          { id: 'link-edit', label: '编辑链接…' },
+          { id: 'link-unlink', label: '移除链接' }
+        )
+      }
     }
 
     if (c.kind === 'codeblock' && !ro && !prev) {
@@ -328,6 +340,10 @@ function setupContextMenu () {
     if (st.zone === 'preview') {
       if (action === 'copy') document.execCommand('copy')
       if (action === 'selectAll') document.execCommand('selectAll')
+      if (action === 'link-open' && st.linkEl) {
+        const url = st.linkEl.getAttribute('href')
+        if (url) void openMarkdownLink(url)
+      }
       return
     }
 
@@ -426,7 +442,7 @@ function setupContextMenu () {
     else if (c.kind === 'link') {
       const url = c.linkEl ? c.linkEl.getAttribute('href') : c.linkUrl
       if (action === 'link-open' && url) {
-        try { window.open(url, '_blank', 'noopener') } catch (_) {}
+        void openMarkdownLink(url)
       }
       else if (action === 'link-edit') {
         if (c.linkEl) {
