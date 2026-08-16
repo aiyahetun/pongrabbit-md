@@ -718,9 +718,9 @@ body {
  * #bg-layer(0) + #glass-overlay(1) 时，主界面必须高于遮罩层。
  * 仅 .theme-glass 曾抬升；从毛玻璃切到浅色/暗黑后 overlay 上仍有全屏 blur，未抬升的 UI 会被压在下面 → 只见壁纸、按钮不见且点不到。
  */
-body.theme-light > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu),
-body.theme-dark > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu),
-body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(#table-dialog):not(#link-dialog):not(#prompt-dialog):not(#ctx-menu):not(#ctx-submenu) {
+body.theme-light > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(.dialog):not(#export-menu):not(#ctx-menu):not(#ctx-submenu),
+body.theme-dark > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(.dialog):not(#export-menu):not(#ctx-menu):not(#ctx-submenu),
+body.theme-glass > *:not(#bg-layer):not(#glass-overlay):not(#panel-mask):not(#music-panel):not(#settings-panel):not(.dialog):not(#export-menu):not(#ctx-menu):not(#ctx-submenu) {
   position: relative;
   z-index: 2;
 }
@@ -1207,14 +1207,14 @@ body.sidebar-collapsed #sidebar{
 .outline-row.outline-l3-row .outline-item:hover,
 .outline-row.outline-l3-row .outline-item.outline-active{color:var(--accent)}
 
-/* 顶栏导出菜单 */
+/* 顶栏导出菜单：fixed + JS 定位，避免被 #mode-bar / #mode-actions-scroll 的 overflow 裁切 */
 .export-menu-wrap{position:relative;flex-shrink:0}
 .export-menu-trigger{min-width:64px}
 .export-menu{
-  position:absolute;top:calc(100% + 4px);right:0;min-width:168px;
+  position:fixed;min-width:168px;
   padding:4px;background:var(--bg-panel);border:1px solid var(--bd);
   border-radius:var(--radius-md);box-shadow:0 8px 24px rgba(0,0,0,0.12);
-  z-index:60;display:flex;flex-direction:column;
+  z-index:180;display:flex;flex-direction:column;
 }
 .export-menu[hidden]{display:none!important}
 .export-menu-item{

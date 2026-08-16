@@ -90,4 +90,4 @@ for (const file of files) {
   )
 }
 console.log(`\nChecked ${files.length} files: ${okCount} normal, ${bloatedCount} need compact on open`)
-console.log('After 1.0.9: .md opens in source mode; mode switch uses disk text unless visual DOM really changed.')
+console.log('Mode switch uses disk text unless visual DOM really changed; editable .md opens in wysiwyg by default.')

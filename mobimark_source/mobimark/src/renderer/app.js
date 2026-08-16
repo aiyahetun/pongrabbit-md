@@ -186,16 +186,6 @@ function syncReadOnlyUi () {
 }
 
 /** 载入磁盘文档（Markdown 或可只读打开的代码/配置） */
-function shouldOpenInMarkdownMode (content, filePath) {
-  const name = (filePath || '').toLowerCase().replace(/\\/g, '/')
-  if (/\.md$/i.test(name)) return true
-  if (/env|\.ini|\.cfg|\.conf|config|\.properties|\.env\./i.test(name)) return true
-  const lines = String(content || '').split('\n').map(l => l.trim()).filter(Boolean)
-  if (lines.length < 4) return false
-  const kvLike = lines.filter(l => /^[A-Za-z_][\w.-]*\s*=/.test(l)).length
-  return kvLike >= Math.max(3, lines.length * 0.25)
-}
-
 function normalizeMarkdownBlocks (md) {
   return String(md || '')
     .replace(/\r\n/g, '\n')
@@ -295,7 +285,7 @@ function applyOpenedDocument (r) {
   const baseTitle = bn(r.filePath) + (readOnlyDoc ? ' · 只读' : '')
   setTitle(autoCompacted && !readOnlyDoc ? baseTitle + ' · 已整理空行' : baseTitle)
   if (autoCompacted && !readOnlyDoc) setModified(true)
-  if (readOnlyDoc || shouldOpenInMarkdownMode(content, r.filePath)) {
+  if (readOnlyDoc) {
     _lastSrc = 'md'
     setMode('markdown')
   } else {
@@ -364,13 +354,25 @@ function setupExportMenu () {
   const menu = $('export-menu')
   if (!wrap || !trigger || !menu) return
 
+  const positionMenu = () => {
+    const r = trigger.getBoundingClientRect()
+    menu.style.top = Math.round(r.bottom + 4) + 'px'
+    menu.style.left = 'auto'
+    menu.style.right = Math.round(Math.max(8, window.innerWidth - r.right)) + 'px'
+  }
   const closeMenu = () => {
     menu.hidden = true
     trigger.setAttribute('aria-expanded', 'false')
+    menu.style.top = ''
+    menu.style.right = ''
+    menu.style.left = ''
+    if (menu.parentElement !== wrap) wrap.appendChild(menu)
   }
   const openMenu = () => {
+    document.body.appendChild(menu)
     menu.hidden = false
     trigger.setAttribute('aria-expanded', 'true')
+    positionMenu()
   }
   const toggleMenu = () => {
     if (menu.hidden) openMenu()
@@ -386,10 +388,13 @@ function setupExportMenu () {
     if (e.target.closest('.export-menu-item')) closeMenu()
   })
   document.addEventListener('click', (e) => {
-    if (!wrap.contains(e.target)) closeMenu()
+    if (!wrap.contains(e.target) && !menu.contains(e.target)) closeMenu()
   })
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeMenu()
+  })
+  window.addEventListener('resize', () => {
+    if (!menu.hidden) positionMenu()
   })
 }
 
@@ -684,7 +689,9 @@ function plainOffsetFromRangeIn (root, range) {
   const pre = range.cloneRange()
   pre.selectNodeContents(root)
   pre.setEnd(range.startContainer, range.startOffset)
-  return pre.toString().length
+  const box = document.createElement('div')
+  box.appendChild(pre.cloneContents())
+  return (box.innerText || box.textContent || '').replace(/\r\n/g, '\n').length
 }
 
 function plainOffsetFromCaretRangeAt (root, x, y) {
@@ -729,16 +736,69 @@ function getRichViewportPlainOffset () {
   return getRichCaretOffset()
 }
 
-function getMdViewportPlainOffset () {
-  const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
-  const padTop = parseInt(window.getComputedStyle(mdEditor).paddingTop, 10) || 0
-  const line = Math.max(0, Math.floor((mdEditor.scrollTop + padTop + lineH * VIEWPORT_ANCHOR_RATIO) / lineH))
-  let charIdx = 0
-  for (let i = 0; i < line; i++) {
-    const nl = mdEditor.value.indexOf('\n', charIdx)
-    if (nl === -1) { charIdx = mdEditor.value.length; break }
-    charIdx = nl + 1
+let _mdMirrorEl = null
+
+function getMdMirror () {
+  if (_mdMirrorEl) return _mdMirrorEl
+  const m = document.createElement('div')
+  m.setAttribute('aria-hidden', 'true')
+  m.style.cssText = 'position:absolute;top:-9999px;left:-9999px;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;'
+  document.body.appendChild(m)
+  _mdMirrorEl = m
+  return m
+}
+
+function syncMdMirrorStyles () {
+  const m = getMdMirror()
+  const cs = window.getComputedStyle(mdEditor)
+  m.style.width = mdEditor.clientWidth + 'px'
+  m.style.font = cs.font
+  m.style.lineHeight = cs.lineHeight
+  m.style.padding = cs.padding
+  m.style.letterSpacing = cs.letterSpacing
+  m.style.tabSize = cs.tabSize
+  m.style.wordBreak = cs.wordBreak
+  m.style.boxSizing = cs.boxSizing
+}
+
+function setMdMirrorMarker (val, index) {
+  const m = getMdMirror()
+  m.textContent = ''
+  const before = document.createTextNode(val.slice(0, index))
+  const marker = document.createElement('span')
+  marker.textContent = '\u200b'
+  m.appendChild(before)
+  m.appendChild(marker)
+  return marker
+}
+
+function getMdIndexAtMirrorY (y) {
+  const val = mdEditor.value
+  if (!val) return 0
+  syncMdMirrorStyles()
+  let lo = 0
+  let hi = val.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    const marker = setMdMirrorMarker(val, mid)
+    if (marker.offsetTop < y) lo = mid + 1
+    else hi = mid
   }
+  return lo
+}
+
+function getMdMirrorYAtIndex (index) {
+  const val = mdEditor.value
+  if (!val) return 0
+  syncMdMirrorStyles()
+  const marker = setMdMirrorMarker(val, Math.min(index, val.length))
+  return marker.offsetTop
+}
+
+function getMdViewportPlainOffset () {
+  const padTop = parseInt(window.getComputedStyle(mdEditor).paddingTop, 10) || 0
+  const y = mdEditor.scrollTop + padTop + mdEditor.clientHeight * VIEWPORT_ANCHOR_RATIO
+  const charIdx = getMdIndexAtMirrorY(y)
   return mdPlainLenAt(mdEditor.value, charIdx)
 }
 
@@ -765,11 +825,9 @@ function captureEditorPlainOffset () {
 function scrollMdToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
   const mp = plainOffsetToMdIndex(mdEditor.value, plainOffset)
   mdEditor.setSelectionRange(mp, mp)
-  const lineH = parseInt(window.getComputedStyle(mdEditor).lineHeight, 10) || 24
   const padTop = parseInt(window.getComputedStyle(mdEditor).paddingTop, 10) || 0
-  const before = mdEditor.value.slice(0, mp)
-  const line = (before.match(/\n/g) || []).length
-  mdEditor.scrollTop = Math.max(0, padTop + line * lineH - mdEditor.clientHeight * ratio)
+  const y = getMdMirrorYAtIndex(mp)
+  mdEditor.scrollTop = Math.max(0, y - padTop - mdEditor.clientHeight * ratio)
 }
 
 function scrollRichToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO) {
@@ -805,7 +863,7 @@ function scrollPreviewToPlainOffset (plainOffset, ratio = VIEWPORT_ANCHOR_RATIO)
 }
 
 function afterEditorLayout (fn) {
-  requestAnimationFrame(() => requestAnimationFrame(fn))
+  requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(fn)))
 }
 
 function restoreViewAtPlainOffset (plainOffset, mode, focusMd) {
@@ -957,7 +1015,9 @@ function setMode(mode) {
   )
 
   if (mode === 'markdown') {
-    if (!_mdEdited) {
+    if (_wysiwygEdited && (prevMode === 'wysiwyg' || _lastSrc === 'wysiwyg') && hasRichContentChanged()) {
+      syncEditorsFromWysiwyg(plainBefore)
+    } else if (!_mdEdited) {
       mdEditor.value = resolveSourceMarkdown()
     }
     resetMdHistory()
@@ -1048,10 +1108,10 @@ function setupRichEditor(){
         case 'b':e.preventDefault();document.execCommand('bold');return
         case 'i':e.preventDefault();document.execCommand('italic');return
         case 'u':e.preventDefault();document.execCommand('underline');return
-        case 's':e.preventDefault();e.shiftKey?saveFileAs():saveFile();return
-        case 'f':e.preventDefault();showFindBar();return
-        case 'n':e.preventDefault();newFile();return
-        case 'o':e.preventDefault();openFile();return
+        case 's':e.preventDefault();e.stopPropagation();e.shiftKey?saveFileAs():saveFile();return
+        case 'f':e.preventDefault();e.stopPropagation();showFindBar();return
+        case 'n':e.preventDefault();e.stopPropagation();newFile();return
+        case 'o':e.preventDefault();e.stopPropagation();openFile();return
       }
     }
     if(e.key==='Tab'){e.preventDefault();document.execCommand('insertHTML',false,'&nbsp;&nbsp;')}
@@ -1193,10 +1253,10 @@ function setupMdToolbar(){
       switch(e.key.toLowerCase()){
         case 'b':e.preventDefault();wrapMd('**','**');return
         case 'i':e.preventDefault();wrapMd('*','*');return
-        case 's':e.preventDefault();e.shiftKey?saveFileAs():saveFile();return
-        case 'f':e.preventDefault();showFindBar();return
-        case 'n':e.preventDefault();newFile();return
-        case 'o':e.preventDefault();openFile();return
+        case 's':e.preventDefault();e.stopPropagation();e.shiftKey?saveFileAs():saveFile();return
+        case 'f':e.preventDefault();e.stopPropagation();showFindBar();return
+        case 'n':e.preventDefault();e.stopPropagation();newFile();return
+        case 'o':e.preventDefault();e.stopPropagation();openFile();return
       }
     }
     if(e.key==='Enter')handleMdEnter(e)
@@ -1315,48 +1375,76 @@ async function openFile(){
   applyOpenedDocument(r)
   await loadRecentFiles();await refreshWorkspaceTree()
 }
+let _saveInFlight = false
+
 async function saveFile(){
+  if (_saveInFlight) return
   if(readOnlyDoc){
     alert('当前为只读代码/配置文件。请使用工具栏「另存为」保存到新位置（例如 .md）。')
     return
   }
-  const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
-  if(r&&r.error==='read-only-doc'){alert('无法覆盖保存该类型文件。请使用「另存为」。');return}
-  if(r&&!r.error){
-    currentFile=r;setModified(false);setTitle(bn(r))
-    _pristineMd=getCurrentMd()
-    _mdEdited=false
-    _wysiwygEdited=false
-    await loadRecentFiles();await refreshWorkspaceTree()
+  _saveInFlight = true
+  try {
+    const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
+    if(r&&r.error==='read-only-doc'){alert('无法覆盖保存该类型文件。请使用「另存为」。');return}
+    if(r&&!r.error){
+      currentFile=r;setModified(false);setTitle(bn(r))
+      _pristineMd=getCurrentMd()
+      _mdEdited=false
+      _wysiwygEdited=false
+      await loadRecentFiles();await refreshWorkspaceTree()
+    }
+  } finally {
+    _saveInFlight = false
   }
 }
 async function saveFileAs(){
-  const r=await window.mobiAPI.saveFileAs({content:getCurrentMd()})
-  if(r&&!r.error){
-    currentFile=r
-    _pristineMd=getCurrentMd()
-    _mdEdited=false
-    _wysiwygEdited=false
-    readOnlyDoc=isReadOnlyCodePath(r)
-    syncReadOnlyUi()
-    setModified(false)
-    setTitle(bn(r)+(readOnlyDoc?' · 只读':''))
-    if(readOnlyDoc){_lastSrc='md';setMode('markdown')}
-    await loadRecentFiles();await refreshWorkspaceTree()
-    updateStatus()
+  if (_saveInFlight) return
+  _saveInFlight = true
+  try {
+    const r=await window.mobiAPI.saveFileAs({content:getCurrentMd()})
+    if(r&&!r.error){
+      currentFile=r
+      _pristineMd=getCurrentMd()
+      _mdEdited=false
+      _wysiwygEdited=false
+      readOnlyDoc=isReadOnlyCodePath(r)
+      syncReadOnlyUi()
+      setModified(false)
+      setTitle(bn(r)+(readOnlyDoc?' · 只读':''))
+      if(readOnlyDoc){_lastSrc='md';setMode('markdown')}
+      await loadRecentFiles();await refreshWorkspaceTree()
+      updateStatus()
+    }
+  } finally {
+    _saveInFlight = false
   }
 }
 async function exportHtml(){
-  await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
+  try {
+    await renderPreview()
+    await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
+  } catch (e) {
+    console.error(e)
+    alert('导出 HTML 失败：' + (e.message || String(e)))
+  }
 }
 async function exportPdf(){
-  if(window.mobiAPIPdf) {
+  try {
+    if (!window.mobiAPIPdf) {
+      alert('PDF 导出不可用')
+      return
+    }
+    await renderPreview()
     await window.mobiAPIPdf.exportPdf({
       html: previewEl.innerHTML,
       title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : '无题',
       theme: cfg.theme,
       fontFamily: cfg.fontFamily || 'system'
     })
+  } catch (e) {
+    console.error(e)
+    alert('导出 PDF 失败：' + (e.message || String(e)))
   }
 }
 
@@ -1914,33 +2002,50 @@ function getRichCaretOffset () {
   if (!sel || !sel.rangeCount) return 0
   const range = sel.getRangeAt(0)
   if (!richEditor.contains(range.startContainer)) return 0
-  const pre = range.cloneRange()
-  pre.selectNodeContents(richEditor)
-  pre.setEnd(range.startContainer, range.startOffset)
-  return pre.toString().length
+  return plainOffsetFromRangeIn(richEditor, range)
 }
 
 function setRichCaretOffset (offset) {
+  const maxLen = (richEditor.innerText || richEditor.textContent || '').replace(/\r\n/g, '\n').length
+  const target = Math.max(0, Math.min(offset, maxLen))
+  const sel = window.getSelection()
+  const range = document.createRange()
+  if (target === 0) {
+    range.setStart(richEditor, 0)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    return
+  }
   const walker = document.createTreeWalker(richEditor, NodeFilter.SHOW_TEXT)
-  let cum = 0
+  let bestNode = null
+  let bestOff = 0
+  let bestDist = Infinity
   let node
   while ((node = walker.nextNode())) {
     const len = node.textContent.length
-    if (cum + len >= offset) {
-      const range = document.createRange()
-      range.setStart(node, Math.min(Math.max(0, offset - cum), len))
+    for (let i = 0; i <= len; i++) {
+      range.setStart(node, i)
       range.collapse(true)
-      const sel = window.getSelection()
-      sel.removeAllRanges()
-      sel.addRange(range)
-      return
+      const dist = Math.abs(plainOffsetFromRangeIn(richEditor, range) - target)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestNode = node
+        bestOff = i
+        if (dist === 0) break
+      }
     }
-    cum += len
+    if (bestDist === 0) break
   }
-  const range = document.createRange()
+  if (bestNode) {
+    range.setStart(bestNode, bestOff)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    return
+  }
   range.selectNodeContents(richEditor)
   range.collapse(false)
-  const sel = window.getSelection()
   sel.removeAllRanges()
   sel.addRange(range)
 }
