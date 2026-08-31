@@ -1335,9 +1335,11 @@ body.preview-justify #preview-content{text-align:justify}
 
 /* 小红书 3:4 导出：离屏渲染，六种高级感配色（见项目「六种高级感配色」）。
    配色来自所选 xhs-style-*，与主窗口预览区 theme 无关，故与编辑时「电脑预览」色块/强调色可能不一致。 */
+/* 离屏渲染：置于视口外；html2canvas 通过 onclone 确保可绘制 */
 #xhs-export-host{
-  position:fixed;left:-24000px;top:0;width:1080px;z-index:-9999;
-  pointer-events:none;overflow:visible;
+  position:fixed;left:-12000px;top:0;width:1080px;height:auto;
+  z-index:-99999;pointer-events:none;overflow:visible;
+  opacity:0;visibility:hidden;
 }
 /* html2canvas：略放大行高与字距，减轻 CJK/代码混排时算高偏紧导致的行间叠影、同行挤字 */
 /* 正文字号由 app.js 写入；左右略对称，右侧仍多留一截给 canvas 右下角签名 */
@@ -1480,6 +1482,28 @@ body.preview-justify #preview-content{text-align:justify}
   min-height:1.45em;
   padding:0.28em 0;
   white-space:normal;
+}
+/* 语法代码块导出分页：多行 pre 拆成行盒，样式接近原 pre */
+#xhs-export-host .xhs-export-surface .xhs-export-pre-plain{
+  background:var(--xhs-pre-bg);
+  border-radius:12px;
+  padding:18px 24px;
+  margin:1em 0;
+  max-width:100%;
+  box-sizing:border-box;
+  color:var(--xhs-pre-fg, var(--xhs-code-fg));
+  font-family:var(--font-code);
+  font-size:.93em;
+  line-height:1.72;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+#xhs-export-host .xhs-export-surface .xhs-export-pre-line{
+  display:block;
+  min-height:1.45em;
+  padding:0.12em 0;
+  white-space:pre-wrap;
+  font-family:inherit;
 }
 #xhs-export-host .xhs-export-surface blockquote{
   border-left:4px solid var(--xhs-bq-border);margin:1em 0;padding:14px 26px 16px 22px;color:var(--xhs-bq-text);font-style:italic;
@@ -1642,6 +1666,9 @@ body.preview-justify #preview-content{text-align:justify}
   display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:2px;
 }
 .xhs-readability-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:2px;
+}
+.xhs-pagination-grid{
   display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:2px;
 }
 @media (min-width:520px){
@@ -2413,6 +2440,47 @@ select{
   box-shadow:0 1px 2px rgba(0,0,0,0.08);
 }
 .primary-btn:hover{opacity:0.92!important;filter:brightness(1.03)!important}
+
+/* 小红书导出进度（默认隐藏；仅导出中 body.xhs-export-busy 时显示） */
+#xhs-export-progress{
+  display:none!important;
+}
+body.xhs-export-busy #xhs-export-progress{
+  display:flex!important;
+}
+/* 导出中遮住主界面，避免离屏 html2canvas 导致背后闪烁 */
+body.xhs-export-busy::before{
+  content:'';
+  position:fixed;inset:0;z-index:240;
+  background:var(--bg-app,#eef1f5);
+  pointer-events:auto;
+}
+body.theme-glass.xhs-export-busy::before{
+  background:rgba(245,247,250,0.98);
+  backdrop-filter:blur(10px);
+}
+.xhs-export-progress-dialog{
+  z-index:260;align-items:center;justify-content:center;
+}
+.xhs-export-progress-box{
+  width:min(420px,calc(100vw - 48px));text-align:center;
+}
+.xhs-export-progress-label{
+  margin:0 0 14px;font-size:13px;color:var(--t2);line-height:1.5;min-height:1.5em;
+}
+.xhs-export-progress-track{
+  height:8px;border-radius:999px;overflow:hidden;
+  background:var(--bg-active);border:1px solid var(--border);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.06);
+}
+.xhs-export-progress-bar{
+  height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,var(--ref-primary) 0%,var(--ref-primary-2) 100%);
+  transition:width .22s ease;
+}
+.xhs-export-progress-pct{
+  margin:10px 0 0;font-size:12px;color:var(--t3);font-variant-numeric:tabular-nums;
+}
 
 /* ════ 滚动条（加宽滑块便于长文档拖动）══════════════════════════ */
 ::-webkit-scrollbar{width:12px;height:12px}

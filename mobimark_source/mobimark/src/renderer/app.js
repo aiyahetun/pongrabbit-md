@@ -95,6 +95,9 @@ async function init() {
   if (verEl && appVer) verEl.textContent = appVer
   if (statusVer && appVer) statusVer.textContent = 'v' + appVer
   cfg = await window.mobiAPI.getConfig()
+  document.body.classList.remove('xhs-export-busy')
+  xhsExportSessionDepth = 0
+  hideXhsExportProgress()
   await applyConfig(cfg)
   setupModeTabs()
   setupRichEditor()
@@ -3002,16 +3005,27 @@ function xhsFontById (id) {
 
 /** 导出图「手机阅读」档位：仅离屏 surface 字号倍率，不改编辑器 */
 const XHS_READABILITY_LEVELS = [
-  { id: 'standard', name: '标准', sub: '约 20px 正文，按 ## 拆长文' },
-  { id: 'comfort', name: '舒适', sub: '约 +45%（≈29px），尽量再按 ### 拆段' },
-  { id: 'large', name: '加大', sub: '约 +88%（≈38px），尽量再按 ### 拆段' }
+  { id: 'standard', name: '标准', sub: '约 34px 正文，适合小红书' },
+  { id: 'comfort', name: '舒适', sub: '约 42px，长文阅读' },
+  { id: 'large', name: '加大', sub: '约 50px，强调可读性' }
+]
+
+/** 导出分页策略（智能 DOM 分页 / 按标题先拆段） */
+const XHS_PAGINATION_MODES = [
+  { id: 'smart', name: '智能分页', sub: '按段落边界自动分页（推荐）' },
+  { id: 'h2', name: '按 ## 分段', sub: '二级标题独立成组后再分页' },
+  { id: 'h2h3', name: '按 ## / ###', sub: '二三级标题拆分后再分页' }
 ]
 
 /** 相对导出版心基准正文字号倍率；字号在 buildXhsExportSurface 用 style 写入（html2canvas 对 calc+变量不稳） */
 function xhsReadabilityMul (readability) {
-  if (readability === 'comfort') return 1.45
-  if (readability === 'large') return 1.88
+  if (readability === 'comfort') return 1.24
+  if (readability === 'large') return 1.47
   return 1
+}
+
+function xhsPaginationById (id) {
+  return XHS_PAGINATION_MODES.find(p => p.id === id) || XHS_PAGINATION_MODES[0]
 }
 
 let xhsStyleDialogResolver = null
@@ -3034,12 +3048,16 @@ function setupXhsStyleDialog () {
     const fid = fsel && fsel.dataset.fontId
     const rsel = rgrid && rgrid.querySelector('.xhs-read-card.selected')
     const rid = (rsel && rsel.dataset.readabilityId) || 'standard'
+    const pgrid = $('xhs-pagination-grid')
+    const psel = pgrid && pgrid.querySelector('.xhs-read-card.selected')
+    const pid = (psel && psel.dataset.paginationId) || 'smart'
     if (!sid || !fid) return
     cfg.xhsExportStyle = sid
     cfg.xhsExportFont = fid
     cfg.xhsExportReadability = rid
-    void window.mobiAPI.saveConfig({ xhsExportStyle: sid, xhsExportFont: fid, xhsExportReadability: rid })
-    close({ styleId: sid, fontId: fid, readability: rid })
+    cfg.xhsExportPagination = pid
+    void window.mobiAPI.saveConfig({ xhsExportStyle: sid, xhsExportFont: fid, xhsExportReadability: rid, xhsExportPagination: pid })
+    close({ styleId: sid, fontId: fid, readability: rid, pagination: pid })
   }
   dlg.onclick = e => { if (e.target === dlg) close(null) }
   grid.onclick = e => {
@@ -3052,6 +3070,14 @@ function setupXhsStyleDialog () {
       const card = e.target.closest('.xhs-read-card')
       if (!card || !rgrid.contains(card)) return
       rgrid.querySelectorAll('.xhs-read-card').forEach(c => { c.classList.toggle('selected', c === card) })
+    }
+  }
+  const pgrid = $('xhs-pagination-grid')
+  if (pgrid) {
+    pgrid.onclick = e => {
+      const card = e.target.closest('.xhs-read-card')
+      if (!card || !pgrid.contains(card)) return
+      pgrid.querySelectorAll('.xhs-read-card').forEach(c => { c.classList.toggle('selected', c === card) })
     }
   }
   fgrid.onclick = e => {
@@ -3076,6 +3102,9 @@ function openXhsStylePicker () {
     const initialRead = (cfg.xhsExportReadability && XHS_READABILITY_LEVELS.some(r => r.id === cfg.xhsExportReadability))
       ? cfg.xhsExportReadability
       : 'standard'
+    const initialPag = (cfg.xhsExportPagination && XHS_PAGINATION_MODES.some(p => p.id === cfg.xhsExportPagination))
+      ? cfg.xhsExportPagination
+      : 'smart'
     const rgrid = $('xhs-readability-grid')
     if (rgrid) {
       rgrid.innerHTML = ''
@@ -3094,6 +3123,26 @@ function openXhsStylePicker () {
         b.appendChild(nm)
         b.appendChild(sub)
         rgrid.appendChild(b)
+      }
+    }
+    const pgrid = $('xhs-pagination-grid')
+    if (pgrid) {
+      pgrid.innerHTML = ''
+      for (const def of XHS_PAGINATION_MODES) {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.className = 'xhs-read-card' + (def.id === initialPag ? ' selected' : '')
+        b.dataset.paginationId = def.id
+        b.setAttribute('role', 'option')
+        const nm = document.createElement('div')
+        nm.className = 'xhs-read-card-name'
+        nm.textContent = def.name
+        const sub = document.createElement('div')
+        sub.className = 'xhs-read-card-sub'
+        sub.textContent = def.sub
+        b.appendChild(nm)
+        b.appendChild(sub)
+        pgrid.appendChild(b)
       }
     }
     grid.innerHTML = ''
@@ -3148,12 +3197,20 @@ function openXhsStylePicker () {
 
 // ════ 小红书 3:4 图片导出（版心 CSS 1080×1440；输出固定 2× 像素，html2canvas scale=2）══════════
 const XHS_LAYOUT_W = 1080
+/** 版心高 = 小红书标准 3:4（1080×1440）；输出 2× = 2160×2880，与主流一致 */
 const XHS_LAYOUT_H = 1440
+/** 单页组装后允许的最大 scrollHeight（layout px，须与输出 1440 layout 对齐） */
+const XHS_LAYOUT_PAGE_CAP = () => XHS_LAYOUT_H
+/** 短图孤行/标点难断行时，允许在标准 3:4 上额外增加的高度（layout px） */
+const XHS_SHORT_ORPHAN_FLEX_LAYOUT_PX = 120
+/** 稀疏页判定：组装高度低于 cap 的此比例时，继续从下一页借单元 */
+const XHS_PACK_MIN_ASSEMBLED_FILL = 0.88
 /** 相对版心的像素倍率（固定 2，不再让用户选择） */
 const XHS_EXPORT_SCALE = 2
 const XHS_MAX_CANVAS_H = 32000
 /** 导出版心正文基准 px（仅导出层；舒适/再乘 xhsReadabilityMul） */
-const XHS_EXPORT_BASE_FONT_PX = 20
+const XHS_EXPORT_BASE_FONT_PX = 34
+const XHS_SURFACE_PAD_TOP = 52
 
 /** 围栏语言为以下时仍按「代码」保留 pre（html2canvas 对真正代码块另说） */
 const XHS_CODE_FENCE_LANGS = new Set([
@@ -3220,8 +3277,8 @@ function splitChunkByH3 (chunk) {
   return parts.length ? parts : [t]
 }
 
-/** 各阅读档的单段字符安全上限（含段间距/标题等高度开销的保守估算） */
-const XHS_MAX_CHARS_PER_SEGMENT = { standard: 9000, comfort: 5500, large: 3500 }
+/** 各阅读档的单段字符安全上限（h2/h2h3 模式段落兜底；智能模式整篇 DOM 分页） */
+const XHS_MAX_CHARS_PER_SEGMENT = { standard: 50000, comfort: 35000, large: 25000 }
 
 /**
  * 兜底拆分：在段落边界（空行）切开超长 chunk，不依赖标题存在。
@@ -3257,22 +3314,26 @@ function splitChunkByParagraphs (chunk, maxChars) {
 }
 
 /**
- * 导出用 Markdown 段列表：标准档仅按 ##；舒适/加大在 ## 后再尽量按 ### 拆，降低单图高度触顶。
- * 最后对所有 chunk 做段落兜底拆分，避免无标题长文触顶报错。
+ * 导出用 Markdown 段列表：智能模式整篇一段；h2/h2h3 先按标题拆，再段落兜底。
  */
-function splitMdForXhsExport (md, readability) {
-  const h2 = splitMdByH2ForXhsExport(md)
+function splitMdForXhsExport (md, readability, paginationMode = 'smart') {
+  const raw = String(md || '').replace(/\r\n/g, '\n').trim()
+  if (!raw) return []
+  const mode = paginationMode || 'smart'
+  if (mode === 'smart') return [raw]
   let chunks
-  if (readability === 'standard') {
-    chunks = h2
-  } else {
-    const flat = []
+  if (mode === 'h2') {
+    chunks = splitMdByH2ForXhsExport(raw)
+  } else if (mode === 'h2h3') {
+    const h2 = splitMdByH2ForXhsExport(raw)
+    chunks = []
     for (const p of h2) {
       const subs = splitChunkByH3(p)
-      if (subs.length <= 1) flat.push(p)
-      else flat.push(...subs)
+      chunks.push(...(subs.length > 1 ? subs : [p]))
     }
-    chunks = flat.length ? flat : h2
+    if (!chunks.length) chunks = h2
+  } else {
+    chunks = [raw]
   }
   const maxChars = XHS_MAX_CHARS_PER_SEGMENT[readability] || XHS_MAX_CHARS_PER_SEGMENT.standard
   const final = []
@@ -3420,6 +3481,1285 @@ function dropTrailingBlankXhsPages (pages, fillColor) {
     out.pop()
   }
   return out
+}
+
+function xhsPageHasRenderableUnits (units) {
+  if (!units || !units.length) return false
+  if (!units.some(u => u.kind !== 'page-break')) return false
+  return xhsMaterializePageUnits(units).length > 0
+}
+
+function xhsFilterExportUnitPages (unitPages) {
+  return (unitPages || []).filter(xhsPageHasRenderableUnits)
+}
+
+function xhsGetLongLayoutPageCap () {
+  return Math.floor(XHS_MAX_CANVAS_H / XHS_EXPORT_SCALE)
+}
+
+function xhsGetShortLayoutCapWithFlex () {
+  return XHS_LAYOUT_PAGE_CAP() + XHS_SHORT_ORPHAN_FLEX_LAYOUT_PX
+}
+
+/** 短图输出宽度固定为 pageW（2160），防止表格横向溢出导致某页异常变宽 */
+function xhsEnsureShortCanvasWidth (canvas, fillColor, pageW, pageH, flexOutPx = 0) {
+  const W = Math.round(pageW)
+  const targetH = Math.round(pageH) + Math.max(0, Math.round(flexOutPx))
+  let c = canvas
+  if (canvas.width !== W) {
+    c = normalizeCanvasToTargetWidth(canvas, fillColor, pageW)
+  }
+  if (c.width === W && c.height === targetH) return c
+  return fitCanvasToShortPage(c, fillColor, pageW, pageH, flexOutPx)
+}
+
+/** 长图输出宽度固定为 pageW，高度保留自然内容 */
+function xhsEnsureLongCanvasWidth (canvas, fillColor, pageW) {
+  const W = Math.round(pageW)
+  if (canvas.width === W) return canvas
+  return normalizeCanvasToTargetWidth(canvas, fillColor, pageW)
+}
+
+function xhsGetExportFontPx (readability) {
+  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
+  return Math.round(10 * XHS_EXPORT_BASE_FONT_PX * xhsReadabilityMul(read)) / 10
+}
+
+function xhsGetDynamicPadBottom (readability) {
+  const fz = xhsGetExportFontPx(readability)
+  return Math.min(72, Math.round(24 + fz * 1.15))
+}
+
+/** 版心上下 padding（单页只计一次，单元隔离测量须扣除） */
+function xhsGetShellVerticalChrome (readability) {
+  return XHS_SURFACE_PAD_TOP + xhsGetDynamicPadBottom(readability)
+}
+
+function xhsMeasureContentHeightFromSurface (surface, readability) {
+  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
+  return Math.max(1, surface.scrollHeight - xhsGetShellVerticalChrome(read))
+}
+
+/** 短图单页可用内容高度（layout px，不含上下 padding） */
+function xhsGetUsablePageContentHeight (readability) {
+  return XHS_LAYOUT_H - XHS_SURFACE_PAD_TOP - xhsGetDynamicPadBottom(readability)
+}
+
+/** 长图单张可用内容高度（layout px，对应输出约 32000px 上限） */
+function xhsGetMaxLongContentHeight (readability) {
+  const layoutMax = Math.floor(XHS_MAX_CANVAS_H / XHS_EXPORT_SCALE)
+  return layoutMax - XHS_SURFACE_PAD_TOP - xhsGetDynamicPadBottom(readability)
+}
+
+function xhsCollectSurfaceBlocks (surface) {
+  return [...surface.children].filter(el => el.tagName !== 'STYLE')
+}
+
+/** marked 表格：thead 或首行 th 为表头，其余为可拆分的 body 行 */
+function xhsGetTableRowGroups (table) {
+  const thead = table.querySelector('thead')
+  if (thead) {
+    return {
+      headerRows: [...thead.querySelectorAll('tr')],
+      dataRows: [...table.querySelectorAll('tbody tr')]
+    }
+  }
+  const allRows = [...table.querySelectorAll(':scope > tr, tbody tr')]
+  if (!allRows.length) return { headerRows: [], dataRows: [] }
+  if (allRows[0].querySelector('th')) {
+    return { headerRows: [allRows[0]], dataRows: allRows.slice(1) }
+  }
+  return { headerRows: [], dataRows: allRows }
+}
+
+function xhsBuildTableFromRows (sourceTable, dataRowEls) {
+  const { headerRows } = xhsGetTableRowGroups(sourceTable)
+  const table = document.createElement('table')
+  if (sourceTable.className) table.className = sourceTable.className
+  if (headerRows.length) {
+    const thead = document.createElement('thead')
+    for (const hr of headerRows) thead.appendChild(hr.cloneNode(true))
+    table.appendChild(thead)
+  }
+  const tbody = document.createElement('tbody')
+  for (const tr of dataRowEls) tbody.appendChild(tr.cloneNode(true))
+  if (tbody.children.length) table.appendChild(tbody)
+  return table
+}
+
+function xhsBuildListFromItems (sourceList, itemEls) {
+  const list = document.createElement(sourceList.tagName.toLowerCase())
+  if (sourceList.className) list.className = sourceList.className
+  if (sourceList.tagName === 'OL' && sourceList.start) list.start = sourceList.start
+  for (const li of itemEls) list.appendChild(li.cloneNode(true))
+  return list
+}
+
+function xhsBuildBoxFromLines (sourceBox, lineEls, lineClass) {
+  const box = document.createElement('div')
+  box.className = sourceBox.className
+  for (const line of lineEls) {
+    const row = document.createElement('div')
+    row.className = lineClass
+    row.textContent = line.textContent || ''
+    box.appendChild(row)
+  }
+  return box
+}
+
+function xhsBuildBlockquoteFromParts (sourceBq, partEls) {
+  const bq = document.createElement('blockquote')
+  if (sourceBq.className) bq.className = sourceBq.className
+  for (const p of partEls) bq.appendChild(p.cloneNode(true))
+  return bq
+}
+
+function xhsMeasureEl (surfaceTop, el) {
+  const r = el.getBoundingClientRect()
+  return {
+    top: r.top - surfaceTop,
+    bottom: r.bottom - surfaceTop,
+    height: r.height
+  }
+}
+
+function xhsPushBlockUnit (units, surfaceTop, el) {
+  const m = xhsMeasureEl(surfaceTop, el)
+  units.push({ kind: 'block', el, ...m })
+}
+
+/**
+ * 多行语法高亮 pre 在分页前拆成行盒（导出专用；分页后可合并，避免整段 pre 超高裁切）。
+ */
+function xhsExplodeRealPreForPagination (surface) {
+  for (const pre of Array.from(surface.querySelectorAll('pre'))) {
+    const code = pre.querySelector('code') || pre
+    const raw = (code.textContent || '').replace(/\r\n/g, '\n')
+    const text = raw.replace(/^\n+/, '').replace(/\n+$/, '')
+    const lines = text.length ? text.split('\n') : ['']
+    if (lines.length <= 1) continue
+    const box = document.createElement('div')
+    box.className = 'xhs-export-pre-plain'
+    for (const line of lines) {
+      const row = document.createElement('div')
+      row.className = 'xhs-export-pre-line'
+      row.textContent = line
+      box.appendChild(row)
+    }
+    pre.parentNode.replaceChild(box, pre)
+  }
+}
+
+function xhsExpandBoxLineUnits (units, surfaceTop, child, lineSelector, lineClass, boxKind) {
+  const lines = [...child.querySelectorAll(lineSelector)]
+  if (lines.length <= 1) {
+    xhsPushBlockUnit(units, surfaceTop, child)
+    return
+  }
+  for (const line of lines) {
+    const m = xhsMeasureEl(surfaceTop, line)
+    units.push({
+      kind: boxKind,
+      sourceBox: child,
+      lineEl: line,
+      lineClass,
+      ...m
+    })
+  }
+}
+
+function xhsCellTextLines (cell) {
+  const text = (cell.innerText || cell.textContent || '').replace(/\r\n/g, '\n')
+  const lines = text.split('\n')
+  return lines.length ? lines : ['']
+}
+
+function xhsSplitTextByCharBudget (text, maxChars) {
+  const t = String(text || '')
+  const budget = Math.max(24, maxChars)
+  if (t.length <= budget) return [t]
+  const out = []
+  let i = 0
+  while (i < t.length) {
+    let end = Math.min(t.length, i + budget)
+    if (end < t.length) {
+      const slice = t.slice(i, end)
+      const br = Math.max(slice.lastIndexOf('；'), slice.lastIndexOf('。'), slice.lastIndexOf('，'), slice.lastIndexOf('、'), slice.lastIndexOf(' '), slice.lastIndexOf('/'))
+      if (br > budget * 0.3) end = i + br + 1
+    }
+    out.push(t.slice(i, end).trim())
+    i = end
+  }
+  return out.filter(s => s.length)
+}
+
+/** 导出过程中自动拆分/降级次数（完成后提示用户） */
+let xhsExportSplitNoticeCount = 0
+let xhsExportSessionDepth = 0
+let xhsMeasureFontsReadyKey = ''
+
+function xhsResetMeasureCache () {
+  xhsMeasureFontsReadyKey = ''
+}
+
+async function xhsWarmMeasureFonts (fontId, readMul) {
+  const key = `${fontId}:${readMul}`
+  if (xhsMeasureFontsReadyKey === key) return
+  await waitXhsExportFonts(fontId, readMul)
+  const sc = XHS_EXPORT_SCALE
+  const m = Math.max(0.8, Math.min(2.05, Number(readMul) || 1))
+  const px = n => Math.max(8, Math.round(n * sc * m)) + 'px'
+  try {
+    await document.fonts.load('400 ' + px(34) + ' "Noto Sans SC"')
+    await document.fonts.load('400 ' + px(34) + ' "Noto Serif SC"')
+    await document.fonts.load('400 ' + px(34) + ' "IBM Plex Sans"')
+    await document.fonts.ready
+  } catch (_) {}
+  xhsMeasureFontsReadyKey = key
+}
+
+function xhsTagUnitLayoutH (unit, h) {
+  if (unit && typeof h === 'number' && h > 0) unit._layoutH = h
+  return unit
+}
+
+function xhsBeginExportSession () {
+  xhsExportSessionDepth++
+  if (xhsExportSessionDepth === 1) document.body.classList.add('xhs-export-busy')
+}
+
+function xhsEndExportSession () {
+  xhsExportSessionDepth = Math.max(0, xhsExportSessionDepth - 1)
+  if (xhsExportSessionDepth === 0) {
+    document.body.classList.remove('xhs-export-busy')
+    hideXhsExportProgress()
+    clearXhsExportHost()
+    xhsResetMeasureCache()
+  }
+}
+
+function showXhsExportProgress (label) {
+  setXhsExportProgress(0, 0, label || '准备中…')
+}
+
+function setXhsExportProgress (done, total, label) {
+  const bar = $('xhs-export-progress-bar')
+  const pctEl = $('xhs-export-progress-pct')
+  const lab = $('xhs-export-progress-label')
+  if (lab && label != null) lab.textContent = label
+  const hasTotal = total > 0
+  const pct = hasTotal ? Math.min(100, Math.round((done / total) * 100)) : 0
+  if (bar) bar.style.width = (hasTotal ? pct : 8) + '%'
+  if (pctEl) pctEl.textContent = hasTotal ? `${pct}%` : '…'
+}
+
+function hideXhsExportProgress () {
+  setXhsExportProgress(0, 0, '准备中…')
+}
+
+function xhsUnitIsHeading (u) {
+  return !!(u && u.kind === 'block' && u.el && /^H[1-6]$/.test(u.el.tagName))
+}
+
+function xhsPageIsHeadingOnly (page) {
+  return page.length > 0 && page.every(xhsUnitIsHeading)
+}
+
+/** 按顿号、斜杠等合并为不超过 maxChars 的片段（适合表格查询词列表） */
+function xhsSplitTextByDelimiters (text, maxChars) {
+  const max = Math.max(24, maxChars)
+  const raw = String(text || '').trim()
+  if (!raw) return ['']
+  if (raw.length <= max) return [raw]
+  const tokens = raw.split(/(、| \/ |；)/).filter(t => t !== '')
+  const out = []
+  let buf = ''
+  for (const tok of tokens) {
+    const next = buf + tok
+    if (next.length <= max) {
+      buf = next
+      continue
+    }
+    if (buf.trim()) out.push(buf.trim())
+    if (tok.length <= max) buf = tok
+    else {
+      out.push(...xhsSplitTextByCharBudget(tok, max))
+      buf = ''
+    }
+  }
+  if (buf.trim()) out.push(buf.trim())
+  return out.length ? out : xhsSplitTextByCharBudget(raw, max)
+}
+
+/** 表格单元格默认每段最大字符（窄列换行后约 2–4 行） */
+const XHS_TABLE_CELL_CHAR_BUDGET = 52
+
+function xhsBuildSyntheticTableRow (templateCells, contents) {
+  const tr = document.createElement('tr')
+  templateCells.forEach((src, ci) => {
+    const cell = document.createElement(src.tagName.toLowerCase())
+    const c = contents[ci]
+    if (c == null || c === '') { /* empty cell */ }
+    else if (typeof c === 'string' && /<[a-z][\s\S]*>/i.test(c)) cell.innerHTML = c
+    else cell.textContent = String(c)
+    tr.appendChild(cell)
+  })
+  return tr
+}
+
+/** 单行表格过高时按单元格文本拆成多行 */
+function xhsExpandTableRowUnits (tr, sourceTable, surfaceTop, maxUnitH, knownHeight, forceCharBudget) {
+  const m = knownHeight != null
+    ? { top: 0, bottom: knownHeight, height: knownHeight }
+    : xhsMeasureEl(surfaceTop, tr)
+  const safeMax = Math.max(96, maxUnitH * 0.8)
+  if (m.height <= safeMax && !forceCharBudget) {
+    return [{ kind: 'table-row', sourceTable, rowEl: tr, ...m }]
+  }
+
+  const cells = [...tr.querySelectorAll('th, td')]
+  if (!cells.length) return [{ kind: 'table-row', sourceTable, rowEl: tr, ...m }]
+
+  const cellLines = cells.map(c => xhsCellTextLines(c))
+  let tallIdx = 0
+  for (let i = 1; i < cellLines.length; i++) {
+    if (cellLines[i].join('').length > cellLines[tallIdx].join('').length) tallIdx = i
+  }
+
+  const maxChars = forceCharBudget || XHS_TABLE_CELL_CHAR_BUDGET
+  let splitLines = cellLines[tallIdx]
+  if (splitLines.length <= 1 && splitLines[0].length > 36) {
+    splitLines = xhsSplitTextByDelimiters(splitLines[0], maxChars)
+  }
+  if (splitLines.length <= 1 && splitLines[0].length > maxChars) {
+    splitLines = xhsSplitTextByCharBudget(splitLines[0], maxChars)
+  }
+  if (splitLines.length <= 1) {
+    if (forceCharBudget && splitLines[0].length > forceCharBudget) {
+      splitLines = xhsSplitTextByCharBudget(splitLines[0], forceCharBudget)
+    }
+    if (splitLines.length <= 1) {
+      return [{ kind: 'table-row', sourceTable, rowEl: tr, ...m }]
+    }
+  }
+
+  const estLineH = m.height / Math.max(1, cellLines[tallIdx].length)
+  const linesPerChunk = Math.max(1, Math.floor(safeMax / Math.max(estLineH, 18)))
+  const lineChunks = []
+  for (let i = 0; i < splitLines.length; i += linesPerChunk) {
+    lineChunks.push(splitLines.slice(i, i + linesPerChunk))
+  }
+
+  return lineChunks.map((lineChunk, chunkIdx) => {
+    const contents = cells.map((c, ci) => {
+      if (ci === tallIdx) return lineChunk.join('\n')
+      if (chunkIdx === 0) return /<[a-z]/i.test(c.innerHTML) ? c.innerHTML : (c.innerText || '').trim()
+      if (ci === 0) {
+        const label = (cells[0].innerText || '').trim()
+        return label || ''
+      }
+      return ''
+    })
+    const fragTr = xhsBuildSyntheticTableRow(cells, contents)
+    const estH = Math.max(24, m.height * (lineChunk.length / splitLines.length))
+    const top = m.top + chunkIdx * estH
+    return {
+      kind: 'table-row',
+      sourceTable,
+      rowEl: fragTr,
+      top,
+      bottom: top + estH,
+      height: estH
+    }
+  })
+}
+
+function xhsBuildSyntheticListItem (templateLi, text) {
+  const li = document.createElement('li')
+  if (templateLi.className) li.className = templateLi.className
+  li.textContent = text
+  return li
+}
+
+function xhsExpandListItemUnits (li, sourceList, surfaceTop, maxUnitH, knownHeight, forceCharBudget) {
+  const m = knownHeight != null
+    ? { top: 0, bottom: knownHeight, height: knownHeight }
+    : xhsMeasureEl(surfaceTop, li)
+  const safeMax = Math.max(96, maxUnitH * 0.8)
+  if (m.height <= safeMax) {
+    return [{ kind: 'list-item', sourceList, itemEl: li, ...m }]
+  }
+  const childPs = [...li.querySelectorAll(':scope > p')]
+  if (childPs.length > 1) {
+    return childPs.map((p, i) => {
+      const fake = document.createElement('li')
+      if (li.className) fake.className = li.className
+      fake.appendChild(p.cloneNode(true))
+      const estH = m.height / childPs.length
+      const top = m.top + i * estH
+      return { kind: 'list-item', sourceList, itemEl: fake, top, bottom: top + estH, height: estH }
+    })
+  }
+  const lines = xhsCellTextLines(li)
+  const charMax = forceCharBudget || XHS_TABLE_CELL_CHAR_BUDGET
+  if (lines.length <= 1) {
+    const chunks = xhsSplitTextByDelimiters(lines[0] || '', charMax)
+    const finalChunks = chunks.length > 1 ? chunks : xhsSplitTextByCharBudget(lines[0] || '', charMax)
+    if (finalChunks.length <= 1) return [{ kind: 'list-item', sourceList, itemEl: li, ...m }]
+    return finalChunks.map((chunk, i) => {
+      const fake = xhsBuildSyntheticListItem(li, chunk)
+      const estH = m.height / finalChunks.length
+      const top = m.top + i * estH
+      return { kind: 'list-item', sourceList, itemEl: fake, top, bottom: top + estH, height: estH }
+    })
+  }
+  const estLineH = m.height / lines.length
+  const perChunk = Math.max(1, Math.floor(safeMax / Math.max(estLineH, 18)))
+  const out = []
+  for (let i = 0; i < lines.length; i += perChunk) {
+    const chunk = lines.slice(i, i + perChunk)
+    const fake = xhsBuildSyntheticListItem(li, chunk.join('\n'))
+    const estH = m.height * (chunk.length / lines.length)
+    const top = m.top + out.length * estH
+    out.push({ kind: 'list-item', sourceList, itemEl: fake, top, bottom: top + estH, height: estH })
+  }
+  return out
+}
+
+function xhsExpandBlockUnits (el, surfaceTop, maxUnitH, knownHeight, forceCharBudget) {
+  const m = knownHeight != null
+    ? { top: 0, bottom: knownHeight, height: knownHeight }
+    : xhsMeasureEl(surfaceTop, el)
+  const safeMax = Math.max(96, maxUnitH * 0.8)
+  if (m.height <= safeMax) return [{ kind: 'block', el, ...m }]
+  const tag = el.tagName
+  if (tag === 'P' || tag === 'H1' || tag === 'H2' || tag === 'H3' || tag === 'H4' || tag === 'H5' || tag === 'H6') {
+    const lines = xhsCellTextLines(el)
+    const charMax = forceCharBudget || XHS_TABLE_CELL_CHAR_BUDGET
+    if (lines.length <= 1) {
+      const chunks = xhsSplitTextByDelimiters(lines[0] || el.innerText || '', charMax)
+      const finalChunks = chunks.length > 1 ? chunks : xhsSplitTextByCharBudget(lines[0] || el.innerText || '', charMax)
+      if (finalChunks.length <= 1) return [{ kind: 'block', el, ...m }]
+      return finalChunks.map((chunk, i) => {
+        const fake = document.createElement(tag.toLowerCase())
+        if (el.className) fake.className = el.className
+        fake.textContent = chunk
+        const estH = m.height / finalChunks.length
+        const top = m.top + i * estH
+        return { kind: 'block', el: fake, top, bottom: top + estH, height: estH }
+      })
+    }
+    const estLineH = m.height / lines.length
+    const perChunk = Math.max(1, Math.floor(safeMax / Math.max(estLineH, 18)))
+    const out = []
+    for (let i = 0; i < lines.length; i += perChunk) {
+      const chunk = lines.slice(i, i + perChunk)
+      const fake = document.createElement(tag.toLowerCase())
+      if (el.className) fake.className = el.className
+      fake.textContent = chunk.join('\n')
+      const estH = m.height * (chunk.length / lines.length)
+      const top = m.top + out.length * estH
+      out.push({ kind: 'block', el: fake, top, bottom: top + estH, height: estH })
+    }
+    return out
+  }
+  return [{ kind: 'block', el, ...m }]
+}
+
+function xhsSubdivideOversizedUnits (units, maxUnitH, forceCharBudget) {
+  const out = []
+  for (const u of units) {
+    if (u.kind === 'table-row') {
+      out.push(...xhsExpandTableRowUnits(u.rowEl, u.sourceTable, 0, maxUnitH, u.height, forceCharBudget))
+    } else if (u.kind === 'list-item') {
+      out.push(...xhsExpandListItemUnits(u.itemEl, u.sourceList, 0, maxUnitH, u.height, forceCharBudget))
+    } else if (u.kind === 'block') {
+      out.push(...xhsExpandBlockUnits(u.el, 0, maxUnitH, u.height, forceCharBudget))
+    } else {
+      out.push(u)
+    }
+  }
+  return out
+}
+
+function xhsAggressiveSubdivideUnits (units, maxUnitH) {
+  for (const budget of [28, 14, 8, 4]) {
+    const sub = xhsSubdivideOversizedUnits(units, maxUnitH, budget)
+    if (sub.length > units.length) return sub
+  }
+  return units
+}
+
+/** 离屏测量单个分页单元组装后的版心高度（measureOnly：跳过截图级等待，字体只预热一次） */
+async function xhsMeasureIsolatedUnitHeight (unit, styleId, fontId, readability) {
+  const nodes = xhsMaterializePageUnits([unit]).map(n => n.cloneNode(true))
+  const surface = document.createElement('div')
+  const { fd, read } = applyXhsSurfaceShellStyles(surface, styleId, fontId, readability)
+  for (const n of nodes) surface.appendChild(n)
+  await mountXhsExportSurface(surface, fd.id, xhsReadabilityMul(read), { measureOnly: true })
+  return xhsMeasureContentHeightFromSurface(surface, read)
+}
+
+async function xhsEnsureTableRowUnitsFit (unit, styleId, fontId, readability, maxLayoutH) {
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+
+  let charBudget = XHS_TABLE_CELL_CHAR_BUDGET
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const parts = xhsExpandTableRowUnits(
+      unit.rowEl, unit.sourceTable, 0,
+      xhsGetUsablePageContentHeight(readability),
+      unit.height,
+      charBudget
+    )
+    if (parts.length <= 1) {
+      charBudget = Math.max(14, Math.floor(charBudget * 0.55))
+      if (charBudget < 16) break
+      continue
+    }
+    xhsExportSplitNoticeCount++
+    const verified = []
+    for (const p of parts) {
+      const sub = {
+        kind: 'table-row',
+        sourceTable: unit.sourceTable,
+        rowEl: p.rowEl,
+        top: p.top,
+        bottom: p.bottom,
+        height: p.height
+      }
+      verified.push(...await xhsEnsureTableRowUnitsFit(sub, styleId, fontId, readability, maxLayoutH))
+    }
+    return verified
+  }
+  return [xhsTagUnitLayoutH(unit, h)]
+}
+
+async function xhsEnsureListItemUnitsFit (unit, styleId, fontId, readability, maxLayoutH, maxUnitH) {
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+
+  let charBudget = XHS_TABLE_CELL_CHAR_BUDGET
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const parts = xhsExpandListItemUnits(
+      unit.itemEl, unit.sourceList, 0, maxUnitH, unit.height, charBudget
+    )
+    if (parts.length <= 1) {
+      charBudget = Math.max(4, Math.floor(charBudget * 0.5))
+      continue
+    }
+    xhsExportSplitNoticeCount++
+    const verified = []
+    for (const p of parts) {
+      const sub = {
+        kind: 'list-item',
+        sourceList: unit.sourceList,
+        itemEl: p.itemEl,
+        top: p.top,
+        bottom: p.bottom,
+        height: p.height
+      }
+      verified.push(...await xhsEnsureListItemUnitsFit(sub, styleId, fontId, readability, maxLayoutH, maxUnitH))
+    }
+    return verified
+  }
+  return [xhsTagUnitLayoutH(unit, h)]
+}
+
+async function xhsEnsureBlockUnitsFit (unit, styleId, fontId, readability, maxLayoutH, maxUnitH) {
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+
+  const imgs = unit.el ? [...unit.el.querySelectorAll('img')] : []
+  if (imgs.length === 1) {
+    imgs[0].style.maxHeight = Math.floor(maxLayoutH * 0.92) + 'px'
+    imgs[0].style.width = 'auto'
+    imgs[0].style.maxWidth = '100%'
+    const h2 = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+    if (h2 <= maxLayoutH) {
+      xhsExportSplitNoticeCount++
+      return [xhsTagUnitLayoutH(unit, h2)]
+    }
+  }
+
+  let charBudget = XHS_TABLE_CELL_CHAR_BUDGET
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const parts = xhsExpandBlockUnits(unit.el, 0, maxUnitH, unit.height, charBudget)
+    if (parts.length <= 1) {
+      charBudget = Math.max(4, Math.floor(charBudget * 0.5))
+      continue
+    }
+    xhsExportSplitNoticeCount++
+    const verified = []
+    for (const p of parts) {
+      const sub = { kind: 'block', el: p.el, top: p.top, bottom: p.bottom, height: p.height }
+      verified.push(...await xhsEnsureBlockUnitsFit(sub, styleId, fontId, readability, maxLayoutH, maxUnitH))
+    }
+    return verified
+  }
+  return [xhsTagUnitLayoutH(unit, h)]
+}
+
+async function xhsEnsureBlockquotePartUnitsFit (unit, styleId, fontId, readability, maxLayoutH, maxUnitH) {
+  const asBlock = {
+    kind: 'block',
+    el: unit.partEl,
+    top: unit.top,
+    bottom: unit.bottom,
+    height: unit.height
+  }
+  const fitted = await xhsEnsureBlockUnitsFit(asBlock, styleId, fontId, readability, maxLayoutH, maxUnitH)
+  return fitted.map(p => ({
+    kind: 'blockquote-part',
+    sourceBq: unit.sourceBq,
+    partEl: p.el,
+    top: p.top,
+    bottom: p.bottom,
+    height: p.height
+  }))
+}
+
+async function xhsEnsureLineUnitFits (unit, styleId, fontId, readability, maxLayoutH) {
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+
+  let budget = 40
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const text = (unit.lineEl && unit.lineEl.textContent) || ''
+    const chunks = xhsSplitTextByCharBudget(text, budget)
+    if (chunks.length <= 1) {
+      budget = Math.max(4, Math.floor(budget * 0.5))
+      continue
+    }
+    xhsExportSplitNoticeCount++
+    const verified = []
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const fakeLine = document.createElement('div')
+      fakeLine.className = unit.lineClass
+      fakeLine.textContent = chunks[ci]
+      const sub = { ...unit, lineEl: fakeLine }
+      verified.push(...await xhsEnsureLineUnitFits(sub, styleId, fontId, readability, maxLayoutH))
+    }
+    return verified
+  }
+  return [xhsTagUnitLayoutH(unit, h)]
+}
+
+async function xhsEnsureUnitFitsIsolation (unit, styleId, fontId, readability, maxLayoutH, maxUnitH) {
+  if (unit.kind === 'page-break') return [unit]
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+  if (unit.kind === 'table-row') {
+    return xhsEnsureTableRowUnitsFit(unit, styleId, fontId, readability, maxLayoutH)
+  }
+  if (unit.kind === 'list-item') {
+    return xhsEnsureListItemUnitsFit(unit, styleId, fontId, readability, maxLayoutH, maxUnitH)
+  }
+  if (unit.kind === 'block') {
+    return xhsEnsureBlockUnitsFit(unit, styleId, fontId, readability, maxLayoutH, maxUnitH)
+  }
+  if (unit.kind === 'blockquote-part') {
+    return xhsEnsureBlockquotePartUnitsFit(unit, styleId, fontId, readability, maxLayoutH, maxUnitH)
+  }
+  if (unit.kind === 'fence-line' || unit.kind === 'pre-line') {
+    return xhsEnsureLineUnitFits(unit, styleId, fontId, readability, maxLayoutH)
+  }
+  return [unit]
+}
+
+async function xhsFlattenPaginationUnitsAsync (surface, maxUnitH, styleId, fontId, readability, onProgress) {
+  const units = xhsFlattenPaginationUnits(surface, maxUnitH)
+  const maxLayoutH = XHS_LAYOUT_H + 6
+  const fd = xhsFontById(fontId)
+  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
+  await xhsWarmMeasureFonts(fd.id, xhsReadabilityMul(read))
+  const out = []
+  let cursorTop = 0
+  const total = Math.max(1, units.length)
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i]
+    const fitted = await xhsEnsureUnitFitsIsolation(u, styleId, fontId, readability, maxLayoutH, maxUnitH)
+    for (const fu of fitted) {
+      if (fu.kind === 'page-break') {
+        out.push({ ...fu, top: cursorTop, bottom: cursorTop, height: 0 })
+        continue
+      }
+      const mh = (typeof fu._layoutH === 'number' && fu._layoutH > 0)
+        ? fu._layoutH
+        : await xhsMeasureIsolatedUnitHeight(fu, styleId, fontId, readability)
+      out.push({ ...fu, top: cursorTop, bottom: cursorTop + mh, height: mh })
+      cursorTop += mh
+    }
+    if (onProgress) onProgress(i + 1, total)
+    if (i % 3 === 2) await new Promise(r => setTimeout(r, 0))
+  }
+  clearXhsExportHost()
+  return out
+}
+
+/** 组装多单元后的整页 scrollHeight（与截图排版一致） */
+async function xhsProbeAssembledPageHeight (units, styleId, fontId, readability) {
+  if (!units.length) return 0
+  const clones = xhsMaterializePageUnits(units).map(n => n.cloneNode(true))
+  const surface = document.createElement('div')
+  const { fd, read } = applyXhsSurfaceShellStyles(surface, styleId, fontId, readability)
+  for (const n of clones) surface.appendChild(n)
+  await mountXhsExportSurface(surface, fd.id, xhsReadabilityMul(read), { measureOnly: true })
+  return surface.scrollHeight
+}
+
+/**
+ * 全局按组装后真实高度装箱（跨粗分页边界合并，对齐 CardDown / Smart RED 填满一页再切）。
+ */
+async function xhsPackUnitsByAssembledHeight (units, styleId, fontId, readability, layoutCap, onProgress) {
+  const pages = []
+  const total = Math.max(1, units.length)
+  let done = 0
+  for (let i = 0; i < units.length;) {
+    if (units[i].kind === 'page-break') {
+      i++
+      continue
+    }
+    let maxSpan = 1
+    for (let k = i + 1; k < units.length; k++) {
+      if (units[k].kind === 'page-break') break
+      maxSpan = k - i + 1
+    }
+    let lo = 1
+    let hi = maxSpan
+    let best = 1
+    while (lo <= hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      const h = await xhsProbeAssembledPageHeight(
+        units.slice(i, i + mid), styleId, fontId, readability
+      )
+      if (h <= layoutCap) {
+        best = mid
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    const slice = units.slice(i, i + best)
+    if (!xhsPageHasRenderableUnits(slice)) {
+      i += best
+      continue
+    }
+    pages.push(slice)
+    i += best
+    done += best
+    if (onProgress) onProgress(Math.min(done, total), total)
+    if (done % 3 === 2) await new Promise(r => setTimeout(r, 0))
+  }
+  clearXhsExportHost()
+  const balanced = await xhsRebalanceSparsePagesAssembled(pages, layoutCap, styleId, fontId, readability)
+  clearXhsExportHost()
+  return balanced.length ? balanced : [[]]
+}
+
+/**
+ * 按组装后真实高度前填稀疏页（比 xhsSumUnitHeights 更准确，避免页内大片留白）。
+ */
+async function xhsRebalanceSparsePagesAssembled (pages, layoutCap, styleId, fontId, readability) {
+  if (pages.length < 2) return pages
+  const targetFill = layoutCap * XHS_PACK_MIN_ASSEMBLED_FILL
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < pages.length - 1; i++) {
+      while (pages[i + 1] && pages[i + 1].length) {
+        let curH = await xhsProbeAssembledPageHeight(pages[i], styleId, fontId, readability)
+        clearXhsExportHost()
+        if (curH >= targetFill) break
+        let pullCount = 0
+        for (let k = 1; k <= pages[i + 1].length; k++) {
+          if (pages[i + 1][k - 1].kind === 'page-break') break
+          const h = await xhsProbeAssembledPageHeight(
+            pages[i].concat(pages[i + 1].slice(0, k)), styleId, fontId, readability
+          )
+          clearXhsExportHost()
+          if (h <= layoutCap) pullCount = k
+          else break
+        }
+        if (!pullCount) break
+        pages[i].push(...pages[i + 1].splice(0, pullCount))
+        if (!pages[i + 1].length) pages.splice(i + 1, 1)
+      }
+    }
+  }
+  return pages.filter(p => p.length)
+}
+
+/** 分页装箱用：累计单元实测高度（避免拆分后 top/bottom 估算偏差） */
+function xhsSumUnitHeights (pageUnits) {
+  return pageUnits.reduce((s, u) => s + (u.height || 0), 0)
+}
+
+/**
+ * 稀疏页前填：当前页填充不足时，从下一页借单元（对齐 CardDown fill-threshold / Smart RED overflow-fill）。
+ */
+function xhsRebalanceSparsePages (pages, limit) {
+  if (pages.length < 2) return pages
+  const minFill = limit * 0.38
+  const targetFill = limit * 0.82
+  for (let i = 0; i < pages.length - 1; i++) {
+    while (pages[i + 1] && pages[i + 1].length) {
+      const used = xhsSumUnitHeights(pages[i])
+      if (used >= targetFill) break
+      const candidate = pages[i + 1][0]
+      if (candidate.kind === 'page-break') break
+      const candH = candidate.height || 0
+      if (used + candH > limit) break
+      pages[i].push(pages[i + 1].shift())
+      if (!pages[i + 1].length) pages.splice(i + 1, 1)
+    }
+  }
+  for (let i = pages.length - 1; i >= 0; i--) {
+    if (!pages[i].length) pages.splice(i, 1)
+  }
+  for (let i = 0; i < pages.length; i++) {
+    if (xhsSumUnitHeights(pages[i]) < minFill && i < pages.length - 1) {
+      while (pages[i + 1] && pages[i + 1].length) {
+        const candidate = pages[i + 1][0]
+        if (candidate.kind === 'page-break') break
+        if (xhsSumUnitHeights(pages[i]) + (candidate.height || 0) > limit) break
+        pages[i].push(pages[i + 1].shift())
+        if (!pages[i + 1].length) pages.splice(i + 1, 1)
+      }
+    }
+  }
+  return pages.length ? pages : [[]]
+}
+
+/** 标题不与正文分离：避免「仅标题」占一整页（RedBookCards HEADING_KEEP_WITH） */
+function xhsFixOrphanHeadingPages (pages, limit) {
+  if (pages.length < 2) return pages
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i]
+    if (!xhsPageIsHeadingOnly(p) || i >= pages.length - 1) continue
+    const next = pages[i + 1]
+    if (!next || !next.length) continue
+    while (next.length && next[0].kind !== 'page-break') {
+      const cand = next[0]
+      const candH = cand.height || 0
+      if (xhsSumUnitHeights(p) + candH > limit) break
+      p.push(next.shift())
+    }
+    if (!next.length) pages.splice(i + 1, 1)
+  }
+  for (let i = 0; i < pages.length - 1; i++) {
+    if (!xhsPageIsHeadingOnly(pages[i])) continue
+    const next = pages[i + 1]
+    if (!next || !next.length) continue
+    const cand = next[0]
+    if (cand.kind === 'page-break') continue
+    if (xhsSumUnitHeights(pages[i]) + (cand.height || 0) <= limit) {
+      pages[i].push(next.shift())
+      if (!next.length) pages.splice(i + 1, 1)
+    }
+  }
+  return pages
+}
+
+/**
+ * 将 surface 顶层块展开为分页单元：表格行 / 列表项 / 围栏与代码行 / 引用段落 / 其余块。
+ */
+function xhsFlattenPaginationUnits (surface, maxUnitH) {
+  const surfaceTop = surface.getBoundingClientRect().top
+  const rowBudget = maxUnitH || xhsGetUsablePageContentHeight('standard')
+  const units = []
+  for (const child of xhsCollectSurfaceBlocks(surface)) {
+    if (child.tagName === 'TABLE') {
+      const { dataRows } = xhsGetTableRowGroups(child)
+      if (!dataRows.length) {
+        xhsPushBlockUnit(units, surfaceTop, child)
+        continue
+      }
+      for (const tr of dataRows) {
+        units.push(...xhsExpandTableRowUnits(tr, child, surfaceTop, rowBudget))
+      }
+    } else if (child.tagName === 'UL' || child.tagName === 'OL') {
+      const items = [...child.children].filter(el => el.tagName === 'LI')
+      if (items.length <= 1) {
+        if (items.length === 1) {
+          units.push(...xhsExpandListItemUnits(items[0], child, surfaceTop, rowBudget))
+        } else {
+          xhsPushBlockUnit(units, surfaceTop, child)
+        }
+        continue
+      }
+      for (const li of items) {
+        units.push(...xhsExpandListItemUnits(li, child, surfaceTop, rowBudget))
+      }
+    } else if (child.classList.contains('xhs-export-fenced-plain')) {
+      xhsExpandBoxLineUnits(units, surfaceTop, child, ':scope > .xhs-export-fence-line', 'xhs-export-fence-line', 'fence-line')
+    } else if (child.classList.contains('xhs-export-pre-plain')) {
+      xhsExpandBoxLineUnits(units, surfaceTop, child, ':scope > .xhs-export-pre-line', 'xhs-export-pre-line', 'pre-line')
+    } else if (child.tagName === 'HR') {
+      const m = xhsMeasureEl(surfaceTop, child)
+      units.push({ kind: 'page-break', top: m.top, bottom: m.top, height: 0 })
+    } else if (child.tagName === 'BLOCKQUOTE') {
+      const parts = [...child.children].filter(el => el.tagName !== 'STYLE')
+      if (parts.length <= 1) {
+        xhsPushBlockUnit(units, surfaceTop, child)
+        continue
+      }
+      for (const part of parts) {
+        const m = xhsMeasureEl(surfaceTop, part)
+        units.push({ kind: 'blockquote-part', sourceBq: child, partEl: part, ...m })
+      }
+    } else {
+      units.push(...xhsExpandBlockUnits(child, surfaceTop, rowBudget))
+    }
+  }
+  return units
+}
+
+/** 将分页单元还原为可挂载的 DOM 节点 */
+function xhsMaterializePageUnits (units) {
+  const nodes = []
+  let tableBuf = null
+  let listBuf = null
+  let fenceBuf = null
+  let preBuf = null
+  let bqBuf = null
+
+  const flushTable = () => {
+    if (tableBuf && tableBuf.rows.length) {
+      nodes.push(xhsBuildTableFromRows(tableBuf.sourceTable, tableBuf.rows))
+      tableBuf = null
+    }
+  }
+  const flushList = () => {
+    if (listBuf && listBuf.items.length) {
+      nodes.push(xhsBuildListFromItems(listBuf.sourceList, listBuf.items))
+      listBuf = null
+    }
+  }
+  const flushFence = () => {
+    if (fenceBuf && fenceBuf.lines.length) {
+      nodes.push(xhsBuildBoxFromLines(fenceBuf.sourceBox, fenceBuf.lines, fenceBuf.lineClass))
+      fenceBuf = null
+    }
+  }
+  const flushPre = () => {
+    if (preBuf && preBuf.lines.length) {
+      nodes.push(xhsBuildBoxFromLines(preBuf.sourceBox, preBuf.lines, preBuf.lineClass))
+      preBuf = null
+    }
+  }
+  const flushBq = () => {
+    if (bqBuf && bqBuf.parts.length) {
+      nodes.push(xhsBuildBlockquoteFromParts(bqBuf.sourceBq, bqBuf.parts))
+      bqBuf = null
+    }
+  }
+  const flushAll = () => {
+    flushTable()
+    flushList()
+    flushFence()
+    flushPre()
+    flushBq()
+  }
+
+  for (const u of units) {
+    if (u.kind === 'page-break') continue
+    if (u.kind === 'table-row') {
+      flushList(); flushFence(); flushPre(); flushBq()
+      if (!tableBuf || tableBuf.sourceTable !== u.sourceTable) {
+        flushTable()
+        tableBuf = { sourceTable: u.sourceTable, rows: [] }
+      }
+      tableBuf.rows.push(u.rowEl)
+    } else if (u.kind === 'list-item') {
+      flushTable(); flushFence(); flushPre(); flushBq()
+      if (!listBuf || listBuf.sourceList !== u.sourceList) {
+        flushList()
+        listBuf = { sourceList: u.sourceList, items: [] }
+      }
+      listBuf.items.push(u.itemEl)
+    } else if (u.kind === 'fence-line') {
+      flushTable(); flushList(); flushPre(); flushBq()
+      if (!fenceBuf || fenceBuf.sourceBox !== u.sourceBox) {
+        flushFence()
+        fenceBuf = { sourceBox: u.sourceBox, lineClass: u.lineClass, lines: [] }
+      }
+      fenceBuf.lines.push(u.lineEl)
+    } else if (u.kind === 'pre-line') {
+      flushTable(); flushList(); flushFence(); flushBq()
+      if (!preBuf || preBuf.sourceBox !== u.sourceBox) {
+        flushPre()
+        preBuf = { sourceBox: u.sourceBox, lineClass: u.lineClass, lines: [] }
+      }
+      preBuf.lines.push(u.lineEl)
+    } else if (u.kind === 'blockquote-part') {
+      flushTable(); flushList(); flushFence(); flushPre()
+      if (!bqBuf || bqBuf.sourceBq !== u.sourceBq) {
+        flushBq()
+        bqBuf = { sourceBq: u.sourceBq, parts: [] }
+      }
+      bqBuf.parts.push(u.partEl)
+    } else {
+      flushAll()
+      nodes.push(u.el)
+    }
+  }
+  flushAll()
+  return nodes
+}
+
+function xhsMeasureSurfaceBlocks (surface) {
+  const surfaceTop = surface.getBoundingClientRect().top
+  return xhsCollectSurfaceBlocks(surface).map(el => {
+    const r = el.getBoundingClientRect()
+    return {
+      el,
+      top: r.top - surfaceTop,
+      bottom: r.bottom - surfaceTop,
+      height: r.height
+    }
+  })
+}
+
+/**
+ * DOM 块级智能分页：段落/标题/表格行边界切页，避免像素盲切半行。
+ * @returns {Array<Array<object>>} 每页为 pagination unit 数组
+ */
+function paginateXhsUnitsOnly (units, usableContentH) {
+  if (!units.length) return [[]]
+  const limit = Math.max(120, Math.floor(usableContentH * 0.94))
+  const pages = []
+  let page = []
+  let pageUsed = 0
+
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i]
+    if (u.kind === 'page-break') {
+      if (page.length) {
+        pages.push(page)
+        page = []
+        pageUsed = 0
+      }
+      continue
+    }
+    const uh = Math.max(1, u.height || 0)
+
+    if (page.length > 0 && pageUsed + uh > limit) {
+      pages.push(page)
+      page = [u]
+      pageUsed = uh
+      if (xhsUnitIsHeading(u)) {
+        let j = i + 1
+        while (j < units.length && units[j].kind === 'page-break') j++
+        if (j < units.length && units[j].kind !== 'page-break') {
+          const nh = Math.max(1, units[j].height || 0)
+          if (uh + nh <= limit) {
+            page.push(units[j])
+            pageUsed += nh
+            i = j
+          }
+        }
+      }
+      continue
+    }
+    if (page.length === 0 && uh > limit) {
+      pages.push([u])
+      page = []
+      pageUsed = 0
+      continue
+    }
+    page.push(u)
+    pageUsed += uh
+  }
+  if (page.length) pages.push(page)
+
+  return xhsFixOrphanHeadingPages(xhsRebalanceSparsePages(pages, limit), limit)
+}
+
+function paginateXhsSurfaceBlocks (surface, usableContentH) {
+  const units = xhsFlattenPaginationUnits(surface, usableContentH)
+  return paginateXhsUnitsOnly(units, usableContentH)
+}
+
+async function paginateXhsSurfaceBlocksAsync (surface, usableContentH, styleId, fontId, readability, onProgress, packLayoutCap) {
+  const units = await xhsFlattenPaginationUnitsAsync(surface, usableContentH, styleId, fontId, readability, onProgress)
+  const layoutCap = packLayoutCap || XHS_LAYOUT_PAGE_CAP()
+  return xhsPackUnitsByAssembledHeight(units, styleId, fontId, readability, layoutCap, onProgress)
+}
+
+/**
+ * 渲染单页导出图：组装后超高则尾部单元移到 overflow；短图固定 3:4，长图保留自然高度。
+ * @returns {{ canvas: HTMLCanvasElement, overflow: object[], extraCanvases?: HTMLCanvasElement[] }}
+ */
+async function xhsRenderPageChunkWithOverflow (opts) {
+  const {
+    styleId, fontId, readability, units, st, pageW, pageH, layoutCap, mode
+  } = opts
+  const baseCap = XHS_LAYOUT_H
+  const searchCap = mode === 'short'
+    ? xhsGetShortLayoutCapWithFlex()
+    : (layoutCap || XHS_LAYOUT_PAGE_CAP())
+  const cap = mode === 'short' ? baseCap : searchCap
+
+  let lo = 1
+  let hi = units.length
+  let best = 1
+  while (lo <= hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    const h = await xhsProbeAssembledPageHeight(units.slice(0, mid), styleId, fontId, readability)
+    if (h <= searchCap) {
+      best = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  clearXhsExportHost()
+
+  if (best === 1 && mode === 'short' && units.length > 1 && xhsUnitIsHeading(units[0])) {
+    const tail = units.slice(1)
+    const sub = xhsAggressiveSubdivideUnits(tail, xhsGetUsablePageContentHeight(readability))
+    const firstTail = sub[0] || tail[0]
+    const mergedH = await xhsProbeAssembledPageHeight([units[0], firstTail], styleId, fontId, readability)
+    clearXhsExportHost()
+    if (mergedH <= searchCap) {
+      return xhsRenderPageChunkWithOverflow({
+        styleId, fontId, readability, units: [units[0], firstTail], st, pageW, pageH, layoutCap, mode
+      })
+    }
+  }
+
+  const chunk = units.slice(0, best)
+  const assembledLayoutH = await xhsProbeAssembledPageHeight(chunk, styleId, fontId, readability)
+  clearXhsExportHost()
+  const shortFlexOutPx = (mode === 'short')
+    ? Math.max(0, Math.round((Math.min(assembledLayoutH, searchCap) - cap) * XHS_EXPORT_SCALE))
+    : 0
+  const clones = xhsMaterializePageUnits(chunk).map(n => n.cloneNode(true))
+  const pageSurface = await assembleXhsPageSurface(styleId, fontId, readability, clones)
+
+  const raw = await captureXhsSurfaceToCanvas(pageSurface, st.canvasBg)
+  clearXhsExportHost()
+  const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
+  if (mode === 'short') {
+    const stdOutH = Math.round(pageH) + shortFlexOutPx
+    if (norm.height > stdOutH + 4) {
+      const subdivided = xhsAggressiveSubdivideUnits(chunk, xhsGetUsablePageContentHeight(readability))
+      if (subdivided.length > chunk.length) {
+        xhsExportSplitNoticeCount++
+        const head = await xhsRenderPageChunkWithOverflow({
+          styleId, fontId, readability, units: [subdivided[0]], st, pageW, pageH, layoutCap, mode
+        })
+        return {
+          canvas: xhsEnsureShortCanvasWidth(head.canvas, st.canvasBg, pageW, pageH, head.flexOutPx || 0),
+          flexOutPx: head.flexOutPx || 0,
+          extraCanvases: (head.extraCanvases || []).map(c => xhsEnsureShortCanvasWidth(c, st.canvasBg, pageW, pageH, head.flexOutPx || 0)),
+          overflow: subdivided.slice(1).concat(units.slice(best))
+        }
+      }
+      console.warn('[xhs-export] pixel-slice fallback for oversized unit', norm.height, stdOutH)
+      xhsExportSplitNoticeCount++
+      const slices = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, stdOutH)
+      return {
+        canvas: xhsEnsureShortCanvasWidth(slices[0], st.canvasBg, pageW, pageH, shortFlexOutPx),
+        flexOutPx: shortFlexOutPx,
+        extraCanvases: slices.slice(1).map(s => xhsEnsureShortCanvasWidth(s, st.canvasBg, pageW, pageH, 0)),
+        overflow: units.slice(best)
+      }
+    }
+    return {
+      canvas: xhsEnsureShortCanvasWidth(
+        fitCanvasToShortPage(norm, st.canvasBg, pageW, pageH, shortFlexOutPx),
+        st.canvasBg, pageW, pageH, shortFlexOutPx
+      ),
+      flexOutPx: shortFlexOutPx,
+      overflow: units.slice(best)
+    }
+  }
+  if (norm.height > XHS_MAX_CANVAS_H) {
+    throw new Error('xhs-height-limit')
+  }
+  return {
+    canvas: xhsEnsureLongCanvasWidth(norm, st.canvasBg, pageW),
+    overflow: units.slice(best)
+  }
+}
+
+/** @deprecated 使用 xhsRenderPageChunkWithOverflow */
+async function xhsRenderShortPageChunk (styleId, fontId, readability, units, st, pageW, pageH) {
+  return xhsRenderPageChunkWithOverflow({
+    styleId, fontId, readability, units, st, pageW, pageH,
+    layoutCap: xhsGetShortLayoutCapWithFlex(),
+    mode: 'short'
+  })
+}
+
+function applyXhsSurfaceShellStyles (surface, styleId, fontId, readability) {
+  const st = xhsStyleById(styleId)
+  const fd = xhsFontById(fontId)
+  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
+  surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id + ' xhs-read-' + read
+  if (st.dark) surface.classList.add('xhs-export--dark')
+  const fz = xhsGetExportFontPx(read)
+  surface.style.fontSize = fz + 'px'
+  surface.style.lineHeight = '2.12'
+  surface.style.paddingBottom = xhsGetDynamicPadBottom(read) + 'px'
+  return { st, fd, read, fz }
+}
+
+async function mountXhsExportSurface (surface, fontId, readMul, opts = {}) {
+  const measureOnly = !!opts.measureOnly
+  let host = $('xhs-export-host')
+  if (!host) {
+    host = document.createElement('div')
+    host.id = 'xhs-export-host'
+    document.body.appendChild(host)
+  }
+  host.innerHTML = ''
+  host.appendChild(surface)
+  host.style.setProperty('height', 'auto', 'important')
+  host.style.setProperty('overflow', 'visible', 'important')
+  if (fontId === 'smiley-sans') injectSmileySansFaceIntoSurface(surface)
+  if (measureOnly) {
+    await xhsWarmMeasureFonts(fontId, readMul)
+    await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
+    void surface.offsetHeight
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    return surface
+  }
+  await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
+  await new Promise(r => setTimeout(r, 80))
+  await waitXhsExportFonts(fontId, readMul)
+  try { await document.fonts.ready } catch (_) {}
+  await new Promise(r => setTimeout(r, 60))
+  void surface.offsetHeight
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+  return surface
+}
+
+/** 由已分页的块节点克隆组装单页 surface（块须来自已完成预处理的源 surface） */
+async function assembleXhsPageSurface (styleId, fontId, readability, contentNodes) {
+  const surface = document.createElement('div')
+  const { fd, read } = applyXhsSurfaceShellStyles(surface, styleId, fontId, readability)
+  for (const node of contentNodes) surface.appendChild(node)
+  await mountXhsExportSurface(surface, fd.id, xhsReadabilityMul(read))
+  return surface
+}
+
+/** 短图：固定 3:4 宽度；内容不足时底部垫背景；孤行时可略增高（flexOutPx 为输出像素） */
+function fitCanvasToShortPage (src, fillColor, pageW, pageH, flexOutPx = 0) {
+  const W = Math.max(1, Math.round(pageW))
+  const H = Math.max(1, Math.round(pageH) + Math.max(0, Math.round(flexOutPx)))
+  const drawH = Math.min(src.height, H)
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = fillColor || '#ffffff'
+  ctx.fillRect(0, 0, W, H)
+  if (src.height > H + 6) {
+    console.warn('[xhs-export] page still taller than cap after split', src.height, H)
+  }
+  if (drawH > 0) ctx.drawImage(src, 0, 0, src.width, drawH, 0, 0, W, drawH)
+  return c
 }
 
 function sliceCanvasToFixedPages (normalizedCanvas, fillColor, pageW, pageH) {
@@ -3829,38 +5169,17 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null, readabili
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
   }
   if (typeof window.html2canvas !== 'function') throw new Error('html2canvas 未加载，请检查 node_modules 与 index.html 脚本引用')
-  const st = xhsStyleById(styleId)
-  const fd = xhsFontById(fontId)
-  const read = ['standard', 'comfort', 'large'].includes(readability) ? readability : 'standard'
-  const readMul = xhsReadabilityMul(read)
-  let host = $('xhs-export-host')
-  if (!host) {
-    host = document.createElement('div')
-    host.id = 'xhs-export-host'
-    document.body.appendChild(host)
-  }
-  host.innerHTML = ''
   const surface = document.createElement('div')
-  surface.className = 'xhs-export-surface xhs-style-' + st.id + ' xhs-export-font-' + fd.id + ' xhs-read-' + read
-  if (st.dark) surface.classList.add('xhs-export--dark')
+  const { st, fd, read, fz } = applyXhsSurfaceShellStyles(surface, styleId, fontId, readability)
   surface.innerHTML = await mdFragmentToExportableHtml(mdChunk != null ? mdChunk : getCurrentMd())
-  {
-    const fz = Math.round(10 * XHS_EXPORT_BASE_FONT_PX * xhsReadabilityMul(read)) / 10
-    surface.style.fontSize = fz + 'px'
-    /* 与 #xhs-export-host .xhs-export-surface 一致；长文/表格混排时略大行高减轻 html2canvas 叠字 */
-    surface.style.lineHeight = '2.12'
-    /* 过大会撑出大量空白分页；略大于行高即可防末行裁切 */
-    surface.style.paddingBottom = Math.min(150, Math.round(48 + fz * 2.45)) + 'px'
-  }
   xhsFlattenProseCodeFencesForCanvas(surface)
+  xhsExplodeRealPreForPagination(surface)
   stripDocPathFromXhsSurface(surface)
   xhsNormalizeNewlinesToBrInFlow(surface)
   xhsSplitFlowAtLineBreaks(surface)
   xhsRelaxPunctuationInSurface(surface)
   xhsUpgradeLongParagraphCode(surface)
   xhsWrapInlineCodeForCanvas(surface)
-  if (fd.id === 'smiley-sans') injectSmileySansFaceIntoSurface(surface)
-  host.appendChild(surface)
   for (const img of surface.querySelectorAll('img')) {
     const s = img.getAttribute('src')
     if (!s || s.startsWith('data:')) continue
@@ -3883,13 +5202,7 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null, readabili
       console.warn('[xhs-export] img inline', e)
     }
   }
-  await Promise.all([...surface.querySelectorAll('img')].map(im => im.decode().catch(() => {})))
-  await new Promise(r => setTimeout(r, 120))
-  await waitXhsExportFonts(fd.id, readMul)
-  try {
-    await document.fonts.ready
-  } catch (_) {}
-  await new Promise(r => setTimeout(r, 80))
+  await mountXhsExportSurface(surface, fd.id, xhsReadabilityMul(read))
   // #region agent log
   const _mdForExport = mdChunk != null ? String(mdChunk) : String(getCurrentMd() || '')
   const _inlineOnlyCode = surface.querySelectorAll('p > code:only-child, li > code:only-child').length
@@ -3918,23 +5231,60 @@ async function buildXhsExportSurface (styleId, fontId, mdChunk = null, readabili
   return surface
 }
 
+function xhsSnapshotHostCaptureStyles (host) {
+  if (!host) return null
+  return {
+    visibility: host.style.visibility,
+    opacity: host.style.opacity,
+    clip: host.style.clip,
+    height: host.style.height,
+    overflow: host.style.overflow,
+    contain: host.style.contain,
+    left: host.style.left,
+    top: host.style.top
+  }
+}
+
+function xhsPrepareExportHostForCapture (host) {
+  if (!host) return
+  host.style.setProperty('visibility', 'visible', 'important')
+  host.style.setProperty('opacity', '1', 'important')
+  host.style.removeProperty('clip')
+  host.style.setProperty('height', 'auto', 'important')
+  host.style.setProperty('overflow', 'visible', 'important')
+  host.style.setProperty('contain', 'none', 'important')
+  host.style.setProperty('left', '-12000px')
+  host.style.setProperty('top', '0px')
+}
+
+function xhsRestoreExportHostCaptureStyles (host, snap) {
+  if (!host || !snap) return
+  for (const [k, v] of Object.entries(snap)) {
+    if (v) host.style.setProperty(k, v)
+    else host.style.removeProperty(k)
+  }
+}
+
 /** 截图前强制排版，避免 html2canvas 少算高度；overflow 避免裁切 */
 async function captureXhsSurfaceToCanvas (surface, canvasBg) {
   const host = surface.parentElement && surface.parentElement.id === 'xhs-export-host'
     ? surface.parentElement
     : $('xhs-export-host')
-  let hostMoved = false
-  if (host) {
-    host.style.setProperty('left', '0px')
-    host.style.setProperty('top', '0px')
-    hostMoved = true
-  }
-  surface.style.overflow = 'visible'
+  const hostSnap = xhsSnapshotHostCaptureStyles(host)
+  if (host) xhsPrepareExportHostForCapture(host)
+  const layoutW = XHS_LAYOUT_W
+  surface.style.maxWidth = layoutW + 'px'
+  surface.style.width = layoutW + 'px'
+  surface.style.boxSizing = 'border-box'
+  surface.style.overflow = 'hidden'
   void surface.offsetHeight
   const shBefore = surface.scrollHeight
   void surface.scrollHeight
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-  const capW = Math.max(1, Math.ceil(surface.offsetWidth || surface.getBoundingClientRect().width))
+  const capW = Math.min(
+    layoutW,
+    Math.max(1, Math.ceil(surface.offsetWidth || surface.getBoundingClientRect().width))
+  )
   const capH = Math.max(1, Math.ceil(Math.max(surface.scrollHeight, shBefore)))
   let cv
   try {
@@ -3950,14 +5300,38 @@ async function captureXhsSurfaceToCanvas (surface, canvasBg) {
       windowWidth: capW,
       windowHeight: capH,
       scrollX: 0,
-      scrollY: 0
+      scrollY: 0,
+      onclone: (_doc, clonedEl) => {
+        clonedEl.style.visibility = 'visible'
+        clonedEl.style.opacity = '1'
+        clonedEl.style.clip = 'auto'
+        clonedEl.style.maxWidth = layoutW + 'px'
+        clonedEl.style.width = layoutW + 'px'
+        clonedEl.style.overflow = 'hidden'
+        clonedEl.style.boxSizing = 'border-box'
+        let p = clonedEl.parentElement
+        while (p) {
+          p.style.visibility = 'visible'
+          p.style.opacity = '1'
+          p.style.clip = 'auto'
+          p.style.overflow = 'visible'
+          p = p.parentElement
+        }
+      }
       /* 勿开 foreignObjectRendering：Electron/Chromium 下常整页空白，仅余签名 */
     })
-  } finally {
-    if (hostMoved && host) {
-      host.style.removeProperty('left')
-      host.style.removeProperty('top')
+    if (cv && cv.width > 0 && cv.height > 0) {
+      const ctx = cv.getContext('2d')
+      const probe = ctx.getImageData(Math.floor(cv.width / 2), Math.floor(cv.height / 2), 1, 1).data
+      const bg = xhsParseHexFill(canvasBg)
+      const isBlank = probe[3] === 0 || (
+        Math.abs(probe[0] - bg.r) < 3 && Math.abs(probe[1] - bg.g) < 3 && Math.abs(probe[2] - bg.b) < 3 &&
+        shBefore > 40
+      )
+      if (isBlank) console.warn('[xhs-export] capture may be blank', { capW, capH, shBefore })
     }
+  } finally {
+    xhsRestoreExportHostCaptureStyles(host, hostSnap)
   }
   // #region agent log
   const expectH = Math.round(shBefore * XHS_EXPORT_SCALE)
@@ -3975,116 +5349,206 @@ async function captureXhsSurfaceToCanvas (surface, canvasBg) {
 
 async function exportXhsShort () {
   let title
+  let sessionActive = false
   try {
+    xhsExportSplitNoticeCount = 0
     title = await getXhsExportTitle()
     if (title == null) return
     const pickOpts = await openXhsStylePicker()
     if (pickOpts == null) return
-    const { styleId, fontId, readability: readPick } = pickOpts
+    const { styleId, fontId, readability: readPick, pagination: pagPick } = pickOpts
     const readability = readPick || cfg.xhsExportReadability || 'standard'
+    const pagination = pagPick || cfg.xhsExportPagination || 'smart'
     const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
     const pageH = XHS_LAYOUT_H * XHS_EXPORT_SCALE
+    const usableH = xhsGetUsablePageContentHeight(readability)
     const pick = await window.mobiAPI.xhsExportPickDir()
     if (!pick || pick.cancelled || !pick.path) return
     const st = xhsStyleById(styleId)
-    const mdParts = splitMdForXhsExport(getCurrentMd(), readability)
+    const mdParts = splitMdForXhsExport(getCurrentMd(), readability, pagination)
     const useParts = mdParts.length > 1
-    const splitHint = readability === 'standard' ? '## 二级标题' : '## 与 ### 标题'
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（按 ${splitHint}）依次导出（文件名：段号-页号.png），是否继续？`)) return
+    const pagLabel = xhsPaginationById(pagination).name
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（${pagLabel}）依次导出（文件名：段号-页号.png），是否继续？`)) return
+
+    sessionActive = true
+    xhsBeginExportSession()
+    showXhsExportProgress('准备导出…')
+    setXhsExportProgress(0, 0, '正在分析分页…')
+    const plans = []
+    for (let si = 0; si < mdParts.length; si++) {
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdParts[si] : null, readability)
+      const unitPages = xhsFilterExportUnitPages(
+        await paginateXhsSurfaceBlocksAsync(surface, usableH, styleId, fontId, readability, (done, total) => {
+          setXhsExportProgress(done, total, `正在分析分页… ${done}/${total}`)
+        }, xhsGetShortLayoutCapWithFlex())
+      )
+      clearXhsExportHost()
+      plans.push({ segIdx0: useParts ? si : 0, unitPages })
+    }
+    let totalSteps = 0
+    for (const pl of plans) totalSteps += pl.unitPages.length
+    totalSteps = Math.max(1, totalSteps)
 
     const files = []
-    const runOne = async (mdSlice, segIdx0) => {
-      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null, readability)
-      const raw = await captureXhsSurfaceToCanvas(surface, st.canvasBg)
-      clearXhsExportHost()
-      const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
-      if (norm.height > XHS_MAX_CANVAS_H) {
-        const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
-        alert(`${seg}仍超过单段高度上限（${XHS_MAX_CANVAS_H}px）。可改用导出对话框里的「标准」阅读档、在该段增加 \`###\` / \`##\` 拆段，或精简内容。`)
-        throw new Error('xhs-height-limit')
-      }
-      let pages = sliceCanvasToFixedPages(norm, st.canvasBg, pageW, pageH)
-      pages = dropTrailingBlankXhsPages(pages, st.canvasBg)
-      for (let pi = 0; pi < pages.length; pi++) {
-        stampExportSignature(pages[pi], st.dark)
-        const data = await canvasToPngDataUrl(pages[pi])
-        const name = useParts
-          ? `${String(segIdx0 + 1).padStart(2, '0')}-${String(pi + 1).padStart(3, '0')}.png`
-          : `${String(pi + 1).padStart(2, '0')}.png`
-        files.push({ name, data })
+    let doneSteps = 0
+    const pushShortCanvas = async (canvas, pageIdxRef, segIdx0, useParts) => {
+      const fixed = xhsEnsureShortCanvasWidth(canvas, st.canvasBg, pageW, pageH)
+      if (isXhsCanvasPageMostlyBlank(fixed, xhsParseHexFill(st.canvasBg))) return
+      stampExportSignature(fixed, st.dark)
+      const data = await canvasToPngDataUrl(fixed)
+      const name = useParts
+        ? `${String(segIdx0 + 1).padStart(2, '0')}-${String(pageIdxRef.v + 1).padStart(3, '0')}.png`
+        : `${String(pageIdxRef.v + 1).padStart(2, '0')}.png`
+      files.push({ name, data })
+      pageIdxRef.v++
+      doneSteps++
+      setXhsExportProgress(doneSteps, totalSteps, `正在渲染第 ${doneSteps} / ${totalSteps} 页…`)
+      await new Promise(r => setTimeout(r, 0))
+    }
+    for (const pl of plans) {
+      const pageIdxRef = { v: 0 }
+      for (let pi = 0; pi < pl.unitPages.length; pi++) {
+        let pending = pl.unitPages[pi]
+        if (!xhsPageHasRenderableUnits(pending)) continue
+        while (pending.length) {
+          const { canvas, overflow, extraCanvases } = await xhsRenderShortPageChunk(
+            styleId, fontId, readability, pending, st, pageW, pageH
+          )
+          await pushShortCanvas(canvas, pageIdxRef, pl.segIdx0, useParts)
+          if (extraCanvases && extraCanvases.length) {
+            for (const ec of extraCanvases) {
+              await pushShortCanvas(ec, pageIdxRef, pl.segIdx0, useParts)
+            }
+          }
+          if (!overflow.length) break
+          pending = overflow
+        }
       }
     }
 
-    if (useParts) {
-      for (let si = 0; si < mdParts.length; si++) {
-        await runOne(mdParts[si], si)
-      }
-    } else {
-      await runOne(null, 0)
-    }
-
+    setXhsExportProgress(totalSteps, totalSteps, '正在写入文件…')
     const r = await window.mobiAPI.xhsExportWriteMany({ parentPath: pick.path, folderName: title, files })
     if (r && r.error) { alert(r.error); return }
     const segHint = useParts ? `（${mdParts.length} 段共 ${files.length} 张）` : `（${files.length} 张）`
-    alert(`已导出短图${segHint}，每张约 ${pageW}×${pageH}，${XHS_EXPORT_SCALE}× 采样：\n${r.dir}`)
+    const splitHint = xhsExportSplitNoticeCount > 0
+      ? `\n其中 ${xhsExportSplitNoticeCount} 处内容已自动拆分。`
+      : ''
+    alert(`已导出短图${segHint}，每张 ${pageW}×${pageH}，智能分页：\n${r.dir}${splitHint}`)
   } catch (e) {
-    clearXhsExportHost()
     if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
     alert('导出短图失败：' + (e.message || String(e)))
+  } finally {
+    if (sessionActive) xhsEndExportSession()
   }
 }
 
 async function exportXhsLong () {
   let title
+  let sessionActive = false
   try {
+    xhsExportSplitNoticeCount = 0
     title = await getXhsExportTitle()
     if (title == null) return
     const pickOpts = await openXhsStylePicker()
     if (pickOpts == null) return
-    const { styleId, fontId, readability: readPick } = pickOpts
+    const { styleId, fontId, readability: readPick, pagination: pagPick } = pickOpts
     const readability = readPick || cfg.xhsExportReadability || 'standard'
+    const pagination = pagPick || cfg.xhsExportPagination || 'smart'
     const pageW = XHS_LAYOUT_W * XHS_EXPORT_SCALE
-    const mdParts = splitMdForXhsExport(getCurrentMd(), readability)
+    const maxLongH = xhsGetMaxLongContentHeight(readability)
+    const mdParts = splitMdForXhsExport(getCurrentMd(), readability, pagination)
     const useParts = mdParts.length > 1
-    const splitHint = readability === 'standard' ? '## 二级标题' : '## 与 ### 标题'
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（按 ${splitHint}）导出为多张长图（文件名：所选名-01.png、-02.png …），是否继续？`)) return
+    const pagLabel = xhsPaginationById(pagination).name
 
     const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
     if (!p || p.cancelled || !p.filePath) return
-    const outPaths = xhsDerivedLongPngPaths(p.filePath, useParts ? mdParts.length : 1)
+    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（${pagLabel}）导出，超长段自动续页，是否继续？`)) return
     const st = xhsStyleById(styleId)
 
-    const runSlice = async (mdSlice, outPath, segIdx0) => {
-      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdSlice : null, readability)
-      const raw = await captureXhsSurfaceToCanvas(surface, st.canvasBg)
+    sessionActive = true
+    xhsBeginExportSession()
+    showXhsExportProgress('准备导出长图…')
+    setXhsExportProgress(0, 0, '正在分析分页…')
+    const plans = []
+    const longLayoutCap = xhsGetLongLayoutPageCap()
+    for (let si = 0; si < mdParts.length; si++) {
+      const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdParts[si] : null, readability)
+      const unitPages = xhsFilterExportUnitPages(
+        await paginateXhsSurfaceBlocksAsync(surface, maxLongH, styleId, fontId, readability, (done, total) => {
+          setXhsExportProgress(done, total, `正在分析分页… ${done}/${total}`)
+        }, longLayoutCap)
+      )
       clearXhsExportHost()
-      const norm = normalizeCanvasToTargetWidth(raw, st.canvasBg, pageW)
-      if (norm.height > XHS_MAX_CANVAS_H) {
-        const seg = useParts ? `第 ${segIdx0 + 1} 段` : '文档'
-        alert(`${seg}仍超过单张长图安全高度（${XHS_MAX_CANVAS_H}px）。可改用「标准」阅读档、增加 \`###\` / \`##\` 拆段，或改用短图导出。`)
-        throw new Error('xhs-height-limit')
+      plans.push({ segIdx0: useParts ? si : 0, unitPages })
+    }
+    let totalSteps = 0
+    for (const pl of plans) totalSteps += pl.unitPages.length
+    totalSteps = Math.max(1, totalSteps)
+
+    const allLongFiles = []
+    let doneSteps = 0
+    const blankRgb = xhsParseHexFill(st.canvasBg)
+    for (const pl of plans) {
+      for (let pi = 0; pi < pl.unitPages.length; pi++) {
+        let pending = pl.unitPages[pi]
+        if (!xhsPageHasRenderableUnits(pending)) continue
+        while (pending.length) {
+          const { canvas, overflow, extraCanvases } = await xhsRenderPageChunkWithOverflow({
+            styleId, fontId, readability, units: pending, st, pageW, pageH: null,
+            layoutCap: longLayoutCap,
+            mode: 'long'
+          })
+          const pushLongCanvas = async (cv) => {
+            const fixed = xhsEnsureLongCanvasWidth(cv, st.canvasBg, pageW)
+            if (isXhsCanvasPageMostlyBlank(fixed, blankRgb)) return
+            stampExportSignature(fixed, st.dark)
+            allLongFiles.push({
+              segIdx0: pl.segIdx0,
+              chunkIdx: allLongFiles.length,
+              data: await canvasToPngDataUrl(fixed)
+            })
+            doneSteps++
+            setXhsExportProgress(doneSteps, totalSteps, `正在渲染第 ${doneSteps} / ${totalSteps} 页…`)
+            await new Promise(r => setTimeout(r, 0))
+          }
+          await pushLongCanvas(canvas)
+          if (extraCanvases && extraCanvases.length) {
+            for (const ec of extraCanvases) await pushLongCanvas(ec)
+          }
+          if (!overflow.length) break
+          pending = overflow
+        }
       }
-      stampExportSignature(norm, st.dark)
-      const data = await canvasToPngDataUrl(norm)
-      const w = await window.mobiAPI.xhsExportWriteOne({ filePath: outPath, data })
+    }
+
+    setXhsExportProgress(totalSteps, totalSteps, '正在写入文件…')
+    const totalFiles = allLongFiles.length
+    const outPaths = xhsDerivedLongPngPaths(p.filePath, totalFiles)
+    for (let fi = 0; fi < totalFiles; fi++) {
+      const w = await window.mobiAPI.xhsExportWriteOne({ filePath: outPaths[fi], data: allLongFiles[fi].data })
       if (w && w.error) { alert(w.error); throw new Error(w.error) }
     }
 
-    if (useParts) {
-      for (let si = 0; si < mdParts.length; si++) {
-        await runSlice(mdParts[si], outPaths[si], si)
-      }
-      alert(`已导出 ${mdParts.length} 张长图（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样），例如：\n${outPaths[0]}`)
+    if (totalFiles > 1) {
+      const splitHint = xhsExportSplitNoticeCount > 0
+        ? `\n其中 ${xhsExportSplitNoticeCount} 处内容已自动拆分。`
+        : ''
+      alert(`已导出 ${totalFiles} 张长图（自动续页，固定宽 ${pageW}px）：\n${outPaths[0]} … ${outPaths[outPaths.length - 1]}${splitHint}`)
+    } else if (totalFiles === 1) {
+      const splitHint = xhsExportSplitNoticeCount > 0
+        ? `\n（${xhsExportSplitNoticeCount} 处内容已自动拆分）`
+        : ''
+      alert(`长图已保存（宽 ${pageW}px，高随内容）：\n` + outPaths[0] + splitHint)
     } else {
-      await runSlice(null, outPaths[0], 0)
-      alert(`长图已保存（宽约 ${pageW}px，${XHS_EXPORT_SCALE}× 采样）：\n` + outPaths[0])
+      alert('没有可导出的内容（文档为空或均为空白页）')
     }
   } catch (e) {
-    clearXhsExportHost()
     if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
     alert('导出长图失败：' + (e.message || String(e)))
+  } finally {
+    if (sessionActive) xhsEndExportSession()
   }
 }
 

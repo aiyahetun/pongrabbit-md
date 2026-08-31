@@ -297,12 +297,15 @@
 <div id="xhs-style-dialog" class="dialog" style="display:none">
   <div class="dialog-box xhs-style-dialog-box">
     <div class="dialog-title">导出风格与字体</div>
-    <p class="xhs-style-dialog-hint">选择配色、正文字体与<strong>导出图</strong>上的手机阅读字号（不改编辑器字号）。导出固定 2× 像素（约 2160 宽）。每张图右下角有小签名。</p>
+    <p class="xhs-style-dialog-hint">选择配色、正文字体与<strong>导出图</strong>上的手机阅读字号（不改编辑器字号）。导出固定 2× 像素（约 2160 宽），短图智能分页不切半行。</p>
     <div class="xhs-export-section-label">配色</div>
     <div id="xhs-style-grid" class="xhs-style-grid" role="listbox" aria-label="导出风格"></div>
     <div class="xhs-export-section-label xhs-export-section-label-mt">手机阅读字号（仅导出）</div>
     <div id="xhs-readability-grid" class="xhs-readability-grid" role="listbox" aria-label="导出阅读字号"></div>
-    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">「舒适 / 加大」会明显放大导出正文字号（不改编辑器），并尽量按 <code>###</code> 小标题再拆段，减轻单图过高报错。</p>
+    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">标准档约 34px 正文，适合小红书；舒适/加大适合长文。字号仅影响导出图，不改编辑器。</p>
+    <div class="xhs-export-section-label xhs-export-section-label-mt">分页方式</div>
+    <div id="xhs-pagination-grid" class="xhs-pagination-grid" role="listbox" aria-label="导出分页方式"></div>
+    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">推荐「智能分页」：在段落边界自动切页，避免一行文字被切成两半。长图超高时自动续页。</p>
     <div class="xhs-export-section-label">正文字体</div>
     <div id="xhs-font-grid" class="xhs-font-grid" role="listbox" aria-label="导出字体"></div>
     <div class="dialog-btns">
@@ -431,6 +434,17 @@
     </select>
   </div>
   <div class="panel-section app-version-hint">版本 <span id="app-version-display">—</span></div>
+</div>
+
+<div id="xhs-export-progress" class="dialog xhs-export-progress-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="xhs-export-progress-title">
+  <div class="dialog-box xhs-export-progress-box">
+    <div class="dialog-title" id="xhs-export-progress-title">正在导出图片</div>
+    <p id="xhs-export-progress-label" class="xhs-export-progress-label">准备中…</p>
+    <div class="xhs-export-progress-track" aria-hidden="true">
+      <div id="xhs-export-progress-bar" class="xhs-export-progress-bar"></div>
+    </div>
+    <p id="xhs-export-progress-pct" class="xhs-export-progress-pct">0%</p>
+  </div>
 </div>
 
 <div id="panel-mask" style="display:none"></div>

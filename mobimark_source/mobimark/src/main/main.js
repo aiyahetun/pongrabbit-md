@@ -193,7 +193,9 @@ function defaultConfig () {
     /** 导出正文字体：noto-serif-sc | noto-sans-sc | smiley-sans | ibm-plex */
     xhsExportFont: 'noto-sans-sc',
     /** 导出图手机阅读字号：standard | comfort | large（仅导出层，不影响编辑器） */
-    xhsExportReadability: 'standard'
+    xhsExportReadability: 'standard',
+    /** 导出分页：smart | h2 | h2h3 */
+    xhsExportPagination: 'smart'
   }
 }
 
