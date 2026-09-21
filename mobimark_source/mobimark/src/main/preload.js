@@ -4,6 +4,17 @@ const path = require('path')
 const { pathToFileURL } = require('url')
 const pkg = require('../../package.json')
 
+const shellOpenListeners = []
+let pendingShellOpenPath = null
+ipcRenderer.on('shell-open-file', (_, filePath) => {
+  if (!filePath) return
+  if (shellOpenListeners.length) {
+    for (const cb of shellOpenListeners) cb(filePath)
+  } else {
+    pendingShellOpenPath = filePath
+  }
+})
+
 /** 必须先注册 IPC 桥接；若在之前抛错会导致 window.mobiAPI 不存在 → 初始化失败 */
 contextBridge.exposeInMainWorld('pengPlatform', process.platform)
 contextBridge.exposeInMainWorld('appVersion', pkg.version || '')
@@ -66,6 +77,15 @@ contextBridge.exposeInMainWorld('mobiAPI', {
       'menu-export-xhs-short', 'menu-export-xhs-long',
       'menu-find', 'menu-compact-blanks', 'menu-toggle-preview', 'menu-focus-mode', 'menu-theme']
       .forEach(e => ipcRenderer.on(e, (_, ...args) => cb(e, ...args)))
+  },
+  onShellOpenFile: (cb) => {
+    if (typeof cb !== 'function') return
+    shellOpenListeners.push(cb)
+    if (pendingShellOpenPath) {
+      const p = pendingShellOpenPath
+      pendingShellOpenPath = null
+      cb(p)
+    }
   }
 })
 

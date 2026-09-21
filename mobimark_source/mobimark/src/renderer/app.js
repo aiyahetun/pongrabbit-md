@@ -53,6 +53,12 @@ let _pristineMd='' // 打开/保存后的磁盘原文，用于未编辑时恢复
 let _richHtmlBaseline='' // 可视化 DOM 基线，用于识别浏览器自动改写
 let _documentLoading=false
 let _editorSyncing=false
+/** 富文本 DOM 已同步的 Markdown 原文，避免模式切换重复 md2html */
+let _richSyncedMd=null
+/** 预览区已渲染的 Markdown，避免重复 marked + hljs */
+let _previewRenderedMd=null
+/** 目录侧栏已解析的 Markdown 源 */
+let _outlineMdSource=''
 let renderTimer=null
 let outlineTimer=null
 let outlineItems=[]
@@ -83,6 +89,7 @@ function detectPlatform () {
 }
 
 async function init() {
+  setupShellOpenFileListener()
   const plat = detectPlatform()
   if (plat === 'darwin') body.classList.add('platform-darwin')
   else if (plat === 'win32') body.classList.add('platform-win32')
@@ -130,23 +137,36 @@ async function init() {
     mdEditor.value = cfg.pendingContent
     richEditor.innerHTML = md2html(cfg.pendingContent)
     attachCodeBlockCopyButtons(richEditor)
+    prepareRichLinksForEditing()
     window.mobiAPI.saveConfig({ pendingContent: '' })
     renderPreview()
   }
   resetEditorHistory()
-  const initialPath = await window.mobiAPI.consumeInitialFile()
-  if (initialPath) await openFileFromPath(initialPath)
 }
 
 /** 系统关联打开 / 第二次实例传入的路径 */
+function pathsEqualOpen (a, b) {
+  if (!a || !b) return false
+  return String(a).replace(/\\/g, '/').toLowerCase() === String(b).replace(/\\/g, '/').toLowerCase()
+}
+
 async function openFileFromPath(filePath) {
   if (!filePath) return
+  if (currentFile && pathsEqualOpen(currentFile, filePath)) return
   const r = await window.mobiAPI.openFileByPath(filePath)
-  if (!r || r.error) return
+  if (!r || r.error) {
+    if (r && r.error !== 'unsupported') console.warn('[open-file]', r.error, filePath)
+    return
+  }
   if (r.action === 'focused-existing') return
   applyOpenedDocument(r)
   await loadRecentFiles()
   await refreshWorkspaceTree()
+}
+
+function setupShellOpenFileListener () {
+  if (!window.mobiAPI.onShellOpenFile) return
+  window.mobiAPI.onShellOpenFile((p) => { void openFileFromPath(p) })
 }
 
 function reportDocumentPathToMain (p) {
@@ -207,6 +227,14 @@ function normalizeRichHtmlForCompare (html) {
 
 function captureRichHtmlBaseline () {
   _richHtmlBaseline = normalizeRichHtmlForCompare(richEditor.innerHTML)
+}
+
+/** contenteditable 内默认可编辑链接无法跳转，锁定 <a> 为只读以便点击打开 */
+function prepareRichLinksForEditing () {
+  for (const a of richEditor.querySelectorAll('a[href]')) {
+    a.setAttribute('contenteditable', 'false')
+    a.setAttribute('draggable', 'false')
+  }
 }
 
 function hasRichContentChanged () {
@@ -279,7 +307,11 @@ function applyOpenedDocument (r) {
   _wysiwygEdited = false
   richEditor.innerHTML = md2html(content)
   attachCodeBlockCopyButtons(richEditor)
+  prepareRichLinksForEditing()
   captureRichHtmlBaseline()
+  _richSyncedMd = content
+  _previewRenderedMd = null
+  _outlineMdSource = ''
   _editorSyncing = false
   currentFile = r.filePath
   readOnlyDoc = inferReadOnlyFromOpen(r)
@@ -915,6 +947,9 @@ function syncEditorsFromWysiwyg (plainOffset) {
     mdEditor.value = converted
     _mdEdited = true
   }
+  _richSyncedMd = mdEditor.value
+  _previewRenderedMd = null
+  _outlineMdSource = ''
   const mp = plainOffsetToMdIndex(mdEditor.value, po)
   mdEditor.setSelectionRange(mp, mp)
   if (!mdFocused) mdEditor.scrollTop = mdScroll
@@ -924,6 +959,8 @@ function syncEditorsFromWysiwyg (plainOffset) {
 function markWysiwygEdited () {
   _wysiwygEdited = true
   _lastSrc = 'wysiwyg'
+  _previewRenderedMd = null
+  _outlineMdSource = ''
 }
 
 function getOutlineMdSource () {
@@ -934,16 +971,23 @@ function restorePristineMdIfNeeded () {
   if (!_wysiwygEdited && !_mdEdited) mdEditor.value = _pristineMd
 }
 
-function syncEditorsFromMd (plainOffset) {
+function syncEditorsFromMd (plainOffset, { force = false } = {}) {
   if (_editorSyncing) return
   restorePristineMdIfNeeded()
+  const md = mdEditor.value
+  if (!force && _richSyncedMd === md && richEditor.innerHTML.trim()) {
+    if (plainOffset != null) setRichCaretOffset(plainOffset)
+    return
+  }
   _editorSyncing = true
-  const po = plainOffset != null ? plainOffset : mdPlainLenAt(mdEditor.value, mdEditor.selectionStart)
+  const po = plainOffset != null ? plainOffset : mdPlainLenAt(md, mdEditor.selectionStart)
   const richScroll = richEditor.scrollTop
   const richFocused = document.activeElement === richEditor
-  richEditor.innerHTML = md2html(mdEditor.value)
+  richEditor.innerHTML = md2html(md)
   attachCodeBlockCopyButtons(richEditor)
+  prepareRichLinksForEditing()
   captureRichHtmlBaseline()
+  _richSyncedMd = md
   setRichCaretOffset(po)
   if (!richFocused) richEditor.scrollTop = richScroll
   _editorSyncing = false
@@ -1016,6 +1060,29 @@ function setMode(mode) {
   ;['wysiwyg','markdown','preview','split'].forEach(m =>
     $('tab-'+m).classList.toggle('active', m === mode)
   )
+  updateModeToolbars(mode)
+  const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
+  $('status-mode').textContent = names[mode] || mode
+
+  switch (mode) {
+    case 'wysiwyg':
+      showFlex(wysiwygPane); hide(mdPane); hide(previewPane); hide(resizerEl)
+      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
+      break
+    case 'markdown':
+      hide(wysiwygPane); showFlex(mdPane); hide(previewPane); hide(resizerEl)
+      mdPane.style.flex = '1'; mdPane.style.width = ''
+      break
+    case 'preview':
+      hide(wysiwygPane); hide(mdPane); showFlex(previewPane); hide(resizerEl)
+      previewPane.style.flex = '1'; previewPane.style.width = ''
+      break
+    case 'split':
+      showFlex(wysiwygPane); showFlex(mdPane); hide(previewPane); show(resizerEl)
+      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
+      mdPane.style.flex = '1'; mdPane.style.width = ''
+      break
+  }
 
   if (mode === 'markdown') {
     if (_wysiwygEdited && (prevMode === 'wysiwyg' || _lastSrc === 'wysiwyg') && hasRichContentChanged()) {
@@ -1038,45 +1105,29 @@ function setMode(mode) {
     }
   } else if (mode === 'preview') {
     if (_wysiwygEdited && _lastSrc === 'wysiwyg' && hasRichContentChanged()) syncEditorsFromWysiwyg(plainBefore)
-    else {
-      restorePristineMdIfNeeded()
-      syncEditorsFromMd(plainBefore)
-    }
+    else restorePristineMdIfNeeded()
   }
-
-  updateModeToolbars(mode)
 
   switch (mode) {
     case 'wysiwyg':
-      showFlex(wysiwygPane); hide(mdPane); hide(previewPane); hide(resizerEl)
-      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
       richEditor.focus()
       restoreViewAtPlainOffset(plainBefore, 'wysiwyg')
       break
     case 'markdown':
-      hide(wysiwygPane); showFlex(mdPane); hide(previewPane); hide(resizerEl)
-      mdPane.style.flex = '1'; mdPane.style.width = ''
       mdEditor.focus()
       restoreViewAtPlainOffset(plainBefore, 'markdown')
       break
     case 'preview':
-      hide(wysiwygPane); hide(mdPane); showFlex(previewPane); hide(resizerEl)
-      previewPane.style.flex = '1'; previewPane.style.width = ''
       renderPreview().then(() => restoreViewAtPlainOffset(plainBefore, 'preview'))
       break
     case 'split':
-      showFlex(wysiwygPane); showFlex(mdPane); hide(previewPane); show(resizerEl)
-      wysiwygPane.style.flex = '1'; wysiwygPane.style.width = ''
-      mdPane.style.flex = '1'; mdPane.style.width = ''
       if (focusMd) mdEditor.focus()
       else richEditor.focus()
       restoreViewAtPlainOffset(plainBefore, 'split', focusMd)
       break
   }
-  const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
-  $('status-mode').textContent = names[mode] || mode
   updateStatus()
-  refreshOutline()
+  scheduleOutlineRefresh()
   setupOutlineSpy()
 }
 
@@ -1237,6 +1288,9 @@ function setupMdToolbar(){
     _lastSrc='md'
     _wysiwygEdited=false
     _mdEdited=true
+    _richSyncedMd=null
+    _previewRenderedMd=null
+    _outlineMdSource=''
     recordMdHistory()
     setModified(true)
     scheduleRender()
@@ -1361,6 +1415,9 @@ async function newFile(){
   if(r.action==='current-window'){
     richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
     _pristineMd=''
+    _richSyncedMd=''
+    _previewRenderedMd=null
+    _outlineMdSource=''
     _mdEdited=false
     _wysiwygEdited=false
     resetEditorHistory()
@@ -1493,8 +1550,8 @@ function scheduleRender(){
 }
 
 async function openMarkdownLink (href) {
-  const raw = String(href || '').trim()
-  if (!raw || raw === '#') return
+  const raw = normalizeLinkHref(href)
+  if (!raw) return
   try {
     const r = await window.mobiAPI.resolveMarkdownLink(currentFile || '', raw)
     if (!r) {
@@ -1520,7 +1577,18 @@ async function openMarkdownLink (href) {
         await window.mobiAPI.openPath(r.filePath)
       }
     }
+  } catch (err) {
+    console.warn('[open-link]', raw, err)
+  }
+}
+
+function normalizeLinkHref (href) {
+  let raw = String(href || '').trim()
+  if (!raw || raw === '#') return ''
+  try {
+    raw = decodeURIComponent(raw)
   } catch (_) {}
+  return raw
 }
 
 function allowedOpenExtForLink (filePath) {
@@ -1529,7 +1597,7 @@ function allowedOpenExtForLink (filePath) {
 }
 
 function setupLinkClickHandlers () {
-  function onLinkClick (e) {
+  function onLinkActivate (e) {
     const a = e.target.closest && e.target.closest('a[href]')
     if (!a) return
     const inPreview = previewEl.contains(a)
@@ -1537,19 +1605,22 @@ function setupLinkClickHandlers () {
     if (!inPreview && !inRich) return
     if (inPreview && editMode !== 'preview') return
     if (inRich && editMode !== 'wysiwyg' && editMode !== 'split') return
+    const href = normalizeLinkHref(a.getAttribute('href'))
+    if (!href) return
     e.preventDefault()
     e.stopPropagation()
-    void openMarkdownLink(a.getAttribute('href'))
+    void openMarkdownLink(href)
   }
-  previewEl.addEventListener('click', onLinkClick)
-  richEditor.addEventListener('click', onLinkClick)
+  previewEl.addEventListener('click', onLinkActivate, true)
+  richEditor.addEventListener('click', onLinkActivate, true)
 }
 
 async function renderPreview(){
   if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">正在渲染预览…</div>';return}
+  const md=getCurrentMd()
+  if (_previewRenderedMd === md && previewEl.innerHTML.trim()) return
   try{
     window.marked.setOptions({breaks:true,gfm:true})
-    const md=getCurrentMd()
     const src=md.replace(/^([ \t]*[-*+] )\[([ xX])\] /gm,(_,b,c)=>`${b}<input type="checkbox" ${c!=' '?'checked':''}> `)
     previewEl.innerHTML=window.marked.parse(src)
     if(window.hljsAPI){
@@ -1571,6 +1642,7 @@ async function renderPreview(){
     })
     applyOutlineIdsToPreview()
     attachCodeBlockCopyButtons(previewEl)
+    _previewRenderedMd = md
   }catch(err){previewEl.innerHTML='<pre style="color:red;padding:20px">'+escHtml(String(err))+'</pre>'}
 }
 
@@ -1735,7 +1807,13 @@ function renderOutlineList () {
 }
 
 function refreshOutline () {
-  outlineItems = parseHeadingsFromMd(getOutlineMdSource())
+  const src = getOutlineMdSource()
+  if (src === _outlineMdSource && outlineItems.length) {
+    if (editMode === 'preview') applyOutlineIdsToPreview()
+    return
+  }
+  _outlineMdSource = src
+  outlineItems = parseHeadingsFromMd(src)
   renderOutlineList()
   if (editMode === 'preview') applyOutlineIdsToPreview()
 }
@@ -2758,6 +2836,7 @@ $('link-ok').onclick=()=>{
       sel.addRange(_savedLinkRange)
     }
     document.execCommand('insertHTML',false,`<a href="${url}">${txt||url}</a>`)
+    prepareRichLinksForEditing()
     recordRichHistory()
     setModified(true)
     scheduleRender()

@@ -13,7 +13,7 @@
 | **Windows** | `pongrabbit-MD Setup 1.0.3.exe` | NSIS 安装向导，可选安装目录。 |
 | **Windows（便携）** | `pongrabbit-MD 1.0.3.exe` | 单文件便携版，无需安装（若已提供）。 |
 
-历史版本说明见 [`CHANGELOG.md`](../CHANGELOG.md)；各版 Release 正文见 `docs/RELEASE_NOTES_vX.Y.Z.md`。
+历史版本说明见 [`CHANGELOG.md`](../CHANGELOG.md)；各版 Release 正文见 `docs/RELEASE_NOTES_vX.Y.Z.md`（最新 [v1.0.29](./RELEASE_NOTES_v1.0.29.md)）。
 
 - **Apple Silicon（M 系列）**：当前默认构建为 **Intel (x64)**，可在 Rosetta 下运行；若需原生通用包，在 `mobimark_source/mobimark` 下执行 `npm run build-mac-universal`（需网络稳定以下载 arm64 Electron）。
 - **未签名 / 未公证**：macOS 首次打开若被拦截，请对应用 **右键 → 打开**；Windows 可能出现 SmartScreen 提示，选「仍要运行」。

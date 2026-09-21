@@ -82,6 +82,11 @@ check('scrollMd uses mirror Y', appSrc.includes('getMdMirrorYAtIndex(mp)'))
 check('setMode wysiwyg->markdown syncs rich', /mode === 'markdown'[\s\S]*?syncEditorsFromWysiwyg\(plainBefore\)/.test(appSrc))
 check('setMode restores scroll after switch', appSrc.includes('restoreViewAtPlainOffset(plainBefore'))
 check('triple rAF for layout', /requestAnimationFrame\(\(\) => requestAnimationFrame\(\(\) => requestAnimationFrame/.test(appSrc))
+check('rich sync cache skips redundant md2html', appSrc.includes('_richSyncedMd') && /_richSyncedMd === md/.test(appSrc))
+check('preview render cache', appSrc.includes('_previewRenderedMd'))
+check('preview mode skips rich resync', /else if \(mode === 'preview'\) \{[\s\S]*?else restorePristineMdIfNeeded\(\)/.test(appSrc) && !/else if \(mode === 'preview'\) \{[\s\S]{0,220}syncEditorsFromMd/.test(appSrc))
+check('link click capture handler', /addEventListener\('click', onLinkActivate, true\)/.test(appSrc))
+check('rich links contenteditable false', appSrc.includes('prepareRichLinksForEditing'))
 
 function plainOffsetFromRangeIn (root, range, document) {
   const pre = range.cloneRange()
@@ -145,8 +150,17 @@ const sampleMd = 'Hello world'
 check('plain text offset roundtrip', plainOffsetToMdIndex(sampleMd, 6, s => s) === 6)
 check('plain text end offset', plainOffsetToMdIndex(sampleMd, 99, s => s) === sampleMd.length)
 
+// ── 4. 资源管理器关联打开 ───────────────────────────────────
+console.log('\n[4] Shell open .md file')
+const preloadSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/preload.js'), 'utf8')
+check('setAppUserModelId on win32', /setAppUserModelId\('com\.pongrabbit\.md'\)/.test(mainSrc))
+check('normalizeShellFileArg', /function normalizeShellFileArg/.test(mainSrc))
+check('dispatchShellOpenFile', /function dispatchShellOpenFile/.test(mainSrc))
+check('shell-open-file IPC', /shell-open-file/.test(mainSrc) && /onShellOpenFile/.test(preloadSrc))
+check('renderer shell listener', /setupShellOpenFileListener/.test(appSrc))
+
 // ── 语法检查 ───────────────────────────────────────────────
-console.log('\n[4] Syntax check')
+console.log('\n[5] Syntax check')
 function syntaxOk (file) {
   try {
     require('node:module').createRequire(file)(file)

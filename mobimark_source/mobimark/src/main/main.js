@@ -6,6 +6,10 @@ const fs = require('fs')
 const crypto = require('crypto')
 const { pathToFileURL, fileURLToPath } = require('url')
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.pongrabbit.md')
+}
+
 const ALLOW_EXT = ['.md', '.markdown', '.txt']
 /** 以只读方式打开的代码/配置文件（与 renderer/app.js 中 READONLY_CODE_EXTS 保持同步） */
 const CODE_DOC_READONLY_EXT = new Set([
@@ -158,7 +162,9 @@ function openExternalFile (filePath) {
     focusWindow(existing)
     return existing
   }
-  return createWindow(abs)
+  const win = createWindow(abs)
+  dispatchShellOpenFile(win, abs)
+  return win
 }
 
 function cfgPath () {
@@ -287,15 +293,64 @@ function sanitizeTreeName (name) {
   return n
 }
 
-function fileFromArgv (argv) {
-  for (let i = 1; i < argv.length; i++) {
-    const a = argv[i]
-    if (!a || a.startsWith('-')) continue
+function stripArgvQuotes (s) {
+  const t = String(s || '').trim()
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1).trim()
+  }
+  return t
+}
+
+function normalizeShellFileArg (raw) {
+  let a = stripArgvQuotes(raw)
+  if (!a) return null
+  if (/^file:\/\//i.test(a)) {
     try {
-      if (fs.existsSync(a) && fs.statSync(a).isFile() && allowedOpenExt(a)) return path.resolve(a)
+      a = fileURLToPath(a)
+    } catch (_) {
+      return null
+    }
+  }
+  return a
+}
+
+function isOwnExecutableArg (argPath) {
+  if (!argPath) return false
+  try {
+    const a = path.resolve(argPath)
+    const exe = path.resolve(process.execPath)
+    if (process.platform === 'win32') return a.toLowerCase() === exe.toLowerCase()
+    return a === exe
+  } catch (_) {
+    return false
+  }
+}
+
+function fileFromArgv (argv) {
+  const list = Array.isArray(argv) ? argv : []
+  for (let i = 1; i < list.length; i++) {
+    const normalized = normalizeShellFileArg(list[i])
+    if (!normalized || normalized.startsWith('-')) continue
+    if (isOwnExecutableArg(normalized)) continue
+    try {
+      const abs = path.resolve(normalized)
+      if (fs.existsSync(abs) && fs.statSync(abs).isFile() && allowedOpenExt(abs)) return abs
     } catch (_) {}
   }
   return null
+}
+
+function dispatchShellOpenFile (win, filePath) {
+  if (!win || win.isDestroyed() || !filePath) return
+  const abs = path.resolve(filePath)
+  const send = () => {
+    if (!win.isDestroyed()) win.webContents.send('shell-open-file', abs)
+  }
+  if (win.webContents.isLoadingMainFrame()) {
+    win.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
 }
 
 function soundsDir () {
@@ -623,8 +678,12 @@ if (!gotLock) {
     setMacDockIcon()
     const initial = pendingInitialPath || fileFromArgv(process.argv)
     pendingInitialPath = null
-    if (initial) openExternalFile(initial)
-    else createWindow()
+    if (initial) {
+      const w = openExternalFile(initial)
+      if (!w) createWindow()
+    } else {
+      createWindow()
+    }
     buildMenu()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -1349,8 +1408,11 @@ ipcMain.handle('open-path', async (_, filePath) => {
 })
 
 function resolveLocalMarkdownPath (mdFilePath, href) {
-  const s = String(href || '').trim()
+  let s = String(href || '').trim()
   if (!s) return null
+  try {
+    s = decodeURIComponent(s)
+  } catch (_) {}
   if (s.startsWith('file:')) {
     try {
       const p = fileURLToPath(s)
@@ -1377,8 +1439,11 @@ function resolveLocalMarkdownPath (mdFilePath, href) {
 }
 
 ipcMain.handle('resolve-markdown-link', (_, mdFilePath, href) => {
-  const s = String(href || '').trim()
+  let s = String(href || '').trim()
   if (!s || s === '#') return null
+  try {
+    s = decodeURIComponent(s)
+  } catch (_) {}
   if (/^https?:\/\//i.test(s) || /^mailto:/i.test(s)) return { type: 'external', url: s }
   if (s.startsWith('#')) return { type: 'anchor', slug: s.slice(1) }
   const filePath = resolveLocalMarkdownPath(mdFilePath, s)

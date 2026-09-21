@@ -341,7 +341,7 @@ function setupContextMenu () {
       if (action === 'copy') document.execCommand('copy')
       if (action === 'selectAll') document.execCommand('selectAll')
       if (action === 'link-open' && st.linkEl) {
-        const url = st.linkEl.getAttribute('href')
+        const url = normalizeLinkHref(st.linkEl.getAttribute('href'))
         if (url) void openMarkdownLink(url)
       }
       return
@@ -440,7 +440,7 @@ function setupContextMenu () {
       }
     }
     else if (c.kind === 'link') {
-      const url = c.linkEl ? c.linkEl.getAttribute('href') : c.linkUrl
+      const url = c.linkEl ? normalizeLinkHref(c.linkEl.getAttribute('href')) : normalizeLinkHref(c.linkUrl)
       if (action === 'link-open' && url) {
         void openMarkdownLink(url)
       }
