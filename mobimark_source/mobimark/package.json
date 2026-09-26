@@ -1,6 +1,6 @@
 {
   "name": "pongrabbit-md",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "pongrabbit-MD — 会呼吸的 Markdown 桌面创作空间：多窗口、毛玻璃、工作区与一键导出",
   "main": "src/main/main.js",
   "scripts": {
@@ -8,14 +8,15 @@
     "build": "electron-builder --win --x64",
     "build-portable": "electron-builder --win portable --x64",
     "build-mac": "electron-builder --mac",
-    "build-mac-universal": "electron-builder --mac --universal"
+    "build-mac-universal": "electron-builder --mac --universal",
+    "release": "node scripts/release.js"
   },
   "build": {
     "appId": "com.pongrabbit.md",
     "productName": "pongrabbit-MD",
     "copyright": "Copyright © 2026 pongrabbit-MD",
     "directories": {
-      "output": "dist-1.0.29"
+      "output": "dist-1.0.30"
     },
     "win": {
       "target": [
@@ -87,7 +88,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "pongrabbit-MD"
+      "shortcutName": "pongrabbit-MD",
+      "license": "build/eula.nsis.txt"
     },
     "portable": {
       "artifactName": "pongrabbit-MD ${version}.${ext}"
@@ -103,6 +105,14 @@
       {
         "from": "sounds/",
         "to": "sounds/"
+      },
+      {
+        "from": "build/eula.zh.txt",
+        "to": "eula.zh.txt"
+      },
+      {
+        "from": "build/eula.en.txt",
+        "to": "eula.en.txt"
       }
     ]
   },
@@ -111,7 +121,7 @@
     "editor"
   ],
   "author": "pongrabbit",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1"

@@ -1,0 +1,4 @@
+pongrabbit-MD license key:
+{token}
+
+Open the app → Settings → License, paste the key, then activate. Copy the whole line. Do not post it in a group chat; it contains your email address.

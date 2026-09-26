@@ -2,8 +2,8 @@
 # 在仓库根目录执行：上传 dist 中已有安装包到 GitHub Release（需 gh 已登录）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DIST="$ROOT/mobimark_source/mobimark/dist"
 VER=$(node -p "require('$ROOT/mobimark_source/mobimark/package.json').version")
+DIST="$ROOT/mobimark_source/mobimark/dist-${VER}"
 TAG="v${VER}"
 
 if ! command -v gh >/dev/null 2>&1; then

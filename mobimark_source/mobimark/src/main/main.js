@@ -5,6 +5,8 @@ const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const { pathToFileURL, fileURLToPath } = require('url')
+const license = require('./license')
+const { t, localeFromOs, storeFromCountry, STORES, intlLocale } = require('../shared/i18n')
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.pongrabbit.md')
@@ -201,7 +203,9 @@ function defaultConfig () {
     /** 导出图手机阅读字号：standard | comfort | large（仅导出层，不影响编辑器） */
     xhsExportReadability: 'standard',
     /** 导出分页：smart | h2 | h2h3 */
-    xhsExportPagination: 'smart'
+    xhsExportPagination: 'smart',
+    locale: '',
+    store: ''
   }
 }
 
@@ -213,6 +217,25 @@ function loadConfig () {
   } catch (_) {
     config = defaultConfig()
   }
+}
+
+function ensureLocaleStore () {
+  const partial = {}
+  if (config.locale !== 'zh' && config.locale !== 'en') {
+    partial.locale = localeFromOs(app.getLocale())
+  }
+  if (config.store !== 'cn' && config.store !== 'intl') {
+    let country = ''
+    try {
+      if (typeof app.getLocaleCountryCode === 'function') country = app.getLocaleCountryCode() || ''
+    } catch (_) {}
+    partial.store = storeFromCountry(country, app.getLocale())
+  }
+  if (partial.locale || partial.store) saveConfigDisk(partial)
+}
+
+function menuLabel (key) {
+  return t(config.locale || 'zh', key)
 }
 
 function saveConfigDisk (partial) {
@@ -505,21 +528,21 @@ function createWindow (initialFilePath = null) {
     win.setWindowButtonVisibility(true)
   }
   let shown = false
-  win.once('ready-to-show', () => {
-    if (!win.isDestroyed()) {
-      shown = true
+  const tryShowWindow = () => {
+    if (win.isDestroyed() || shown) return
+    shown = true
+    try {
       win.show()
+      win.focus()
       sendWinState(win)
-    }
-  })
-  /* 极少数环境 ready-to-show 不触发，避免窗口永远隐藏 */
+    } catch (_) {}
+  }
+  win.once('ready-to-show', tryShowWindow)
+  win.webContents.once('did-finish-load', tryShowWindow)
+  /* ready-to-show 偶发不触发时尽快露出窗口，避免任务栏有图标但点不开 */
   setTimeout(() => {
-    if (!win.isDestroyed() && !shown && !win.isVisible()) {
-      try {
-        win.show()
-      } catch (_) {}
-    }
-  }, 5000)
+    if (!win.isDestroyed() && !win.isVisible()) tryShowWindow()
+  }, 1500)
   win.webContents.on('did-fail-load', (event, code, desc, url, isMainFrame) => {
     if (!isMainFrame) return
     console.error('[did-fail-load]', code, desc, url)
@@ -608,22 +631,22 @@ function buildMenu () {
         }]
       : []),
     {
-      label: '文件',
+      label: menuLabel('menu.file'),
       submenu: [
-        { label: '新建', accelerator: 'CmdOrCtrl+N', click: () => send('menu-new') },
-        { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => send('menu-open') },
+        { label: menuLabel('menu.new'), accelerator: 'CmdOrCtrl+N', click: () => send('menu-new') },
+        { label: menuLabel('menu.open'), accelerator: 'CmdOrCtrl+O', click: () => send('menu-open') },
         { type: 'separator' },
-        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('menu-save') },
-        { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu-save-as') },
+        { label: menuLabel('menu.save'), accelerator: 'CmdOrCtrl+S', click: () => send('menu-save') },
+        { label: menuLabel('menu.saveAs'), accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu-save-as') },
         { type: 'separator' },
-        { label: '导出 HTML…', click: () => send('menu-export-html') },
-        { label: '导出短图（小红书 3:4）…', click: () => send('menu-export-xhs-short') },
-        { label: '导出长图（小红书 3:4）…', click: () => send('menu-export-xhs-long') },
+        { label: menuLabel('menu.exportHtml'), click: () => send('menu-export-html') },
+        { label: menuLabel('menu.exportShort'), click: () => send('menu-export-xhs-short') },
+        { label: menuLabel('menu.exportLong'), click: () => send('menu-export-xhs-long') },
         ...(!isMac ? [{ type: 'separator' }, { role: 'quit' }] : [])
       ]
     },
     {
-      label: '编辑',
+      label: menuLabel('menu.edit'),
       submenu: [
         { role: 'undo' },
         { role: 'redo' },
@@ -634,20 +657,20 @@ function buildMenu () {
         { type: 'separator' },
         { role: 'selectAll' },
         { type: 'separator' },
-        { label: '查找…', accelerator: 'CmdOrCtrl+F', click: () => send('menu-find') },
+        { label: menuLabel('menu.find'), accelerator: 'CmdOrCtrl+F', click: () => send('menu-find') },
         { type: 'separator' },
-        { label: '整理多余空行', click: () => send('menu-compact-blanks') }
+        { label: menuLabel('menu.compact'), click: () => send('menu-compact-blanks') }
       ]
     },
     {
-      label: '视图',
+      label: menuLabel('menu.view'),
       submenu: [
-        { label: '切换预览', accelerator: 'CmdOrCtrl+Shift+V', click: () => send('menu-toggle-preview') },
-        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('menu-focus-mode') },
+        { label: menuLabel('menu.togglePreview'), accelerator: 'CmdOrCtrl+Shift+V', click: () => send('menu-toggle-preview') },
+        { label: menuLabel('menu.focus'), accelerator: 'CmdOrCtrl+Shift+F', click: () => send('menu-focus-mode') },
         { type: 'separator' },
-        { label: '浅色主题', click: () => send('menu-theme', 'light') },
-        { label: '深色主题', click: () => send('menu-theme', 'dark') },
-        { label: '毛玻璃主题', click: () => send('menu-theme', 'glass') }
+        { label: menuLabel('menu.themeLight'), click: () => send('menu-theme', 'light') },
+        { label: menuLabel('menu.themeDark'), click: () => send('menu-theme', 'dark') },
+        { label: menuLabel('menu.themeGlass'), click: () => send('menu-theme', 'glass') }
       ]
     }
   ]
@@ -675,6 +698,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     loadConfig()
+    ensureLocaleStore()
     setMacDockIcon()
     const initial = pendingInitialPath || fileFromArgv(process.argv)
     pendingInitialPath = null
@@ -862,6 +886,8 @@ ipcMain.handle('read-file', async (_, filePath) => {
 })
 
 ipcMain.handle('save-file', async (event, { filePath, content }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   if (filePath) {
     if (isReadOnlyCodeDoc(filePath)) return { error: 'read-only-doc' }
@@ -879,6 +905,8 @@ ipcMain.handle('save-file', async (event, { filePath, content }) => {
 })
 
 ipcMain.handle('save-file-as', async (event, { content }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   const result = await saveAsDialog(content, { title: '另存为' }, win)
   if (result && !result.error) registerDocumentPath(win, result)
@@ -886,6 +914,8 @@ ipcMain.handle('save-file-as', async (event, { content }) => {
 })
 
 ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-only' }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   if (hasChanges) {
     const r = await dialog.showMessageBox(win, {
@@ -918,6 +948,8 @@ ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-o
 ipcMain.handle('get-recent-files', () => [...(config.recentFiles || [])])
 
 ipcMain.handle('export-html', async (event, { html, title }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   const safeTitle = (title || 'export').replace(/[\\/:*?"<>|]/g, '_')
   const { filePath, canceled } = await dialog.showSaveDialog(win, {
@@ -926,7 +958,7 @@ ipcMain.handle('export-html', async (event, { html, title }) => {
     filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
   })
   if (canceled || !filePath) return
-  const doc = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(String(title || ''))}</title></head><body>\n${html}\n</body></html>`
+  const doc = `<!DOCTYPE html><html lang="${intlLocale(config.locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(String(title || ''))}</title></head><body>\n${html}\n</body></html>`
   fs.writeFileSync(filePath, doc, 'utf8')
 })
 
@@ -986,7 +1018,7 @@ function buildPdfExportDocument ({ html, title, theme, fontFamily }) {
   const safeTitle = escapeHtml(String(title || ''))
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${intlLocale(config.locale)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1018,6 +1050,8 @@ body {
 }
 
 ipcMain.handle('export-pdf', async (event, { html, title, theme, fontFamily }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   const safeTitle = (title || 'export').replace(/[\\/:*?"<>|]/g, '_')
   const { filePath, canceled } = await dialog.showSaveDialog(win, {
@@ -1075,7 +1109,39 @@ ipcMain.handle('xhs-export-save-long-path', async (event, { defaultTitle }) => {
   return { filePath }
 })
 
+function licenseDenied () {
+  const st = license.getStatus({ consumeReminder: false })
+  if (st.unlocked) return null
+  return { error: 'license-required' }
+}
+
+ipcMain.handle('i18n-state', () => ({
+  locale: config.locale || 'zh',
+  store: config.store || 'cn',
+  stores: STORES,
+  packaged: app.isPackaged
+}))
+
+ipcMain.handle('i18n-set-locale', (_, locale) => {
+  if (locale !== 'zh' && locale !== 'en') return { error: 'bad-locale' }
+  saveConfigDisk({ locale })
+  buildMenu()
+  return { locale: config.locale, store: config.store, stores: STORES }
+})
+
+ipcMain.handle('i18n-set-store', (_, store) => {
+  if (store !== 'cn' && store !== 'intl') return { error: 'bad-store' }
+  saveConfigDisk({ store })
+  return { locale: config.locale, store: config.store, stores: STORES }
+})
+
+ipcMain.handle('license-status', (_, opts) => license.getStatus(opts || {}))
+
+ipcMain.handle('license-activate', (_, token) => license.activate(token))
+
 ipcMain.handle('xhs-export-write-one', async (_, { filePath, data }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   try {
     const raw = typeof data === 'string' && data.includes(',') ? data.split(',').pop() : data
     fs.writeFileSync(filePath, Buffer.from(raw, 'base64'))
@@ -1086,6 +1152,8 @@ ipcMain.handle('xhs-export-write-one', async (_, { filePath, data }) => {
 })
 
 ipcMain.handle('xhs-export-write-many', async (_, { parentPath, folderName, files }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   try {
     const safe = (folderName || 'export').replace(/[\\/:*?"<>|]/g, '_').trim() || 'export'
     const dir = path.join(parentPath, safe)
@@ -1169,7 +1237,7 @@ ipcMain.handle('scan-music-folder', async (_, folder) => {
       if (fs.statSync(full).isFile()) tracks.push({ name, path: full })
     } catch (_) {}
   }
-  tracks.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  tracks.sort((a, b) => a.name.localeCompare(b.name, intlLocale(config.locale)))
   return tracks
 })
 
@@ -1238,12 +1306,14 @@ ipcMain.handle('workspace-list-dir', (_, relPath) => {
   }
   entries.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-    return a.name.localeCompare(b.name, 'zh-CN')
+    return a.name.localeCompare(b.name, intlLocale(config.locale))
   })
   return { entries }
 })
 
 ipcMain.handle('workspace-mkdir', (_, relParent, name) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const root = workspaceRootResolved()
   if (!root) return { error: 'no-workspace' }
   const n = sanitizeTreeName(name)
@@ -1267,6 +1337,8 @@ ipcMain.handle('workspace-mkdir', (_, relParent, name) => {
 })
 
 ipcMain.handle('workspace-create-file', (_, relParent, name) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const root = workspaceRootResolved()
   if (!root) return { error: 'no-workspace' }
   let n = sanitizeTreeName(name)
@@ -1296,6 +1368,8 @@ ipcMain.handle('workspace-create-file', (_, relParent, name) => {
 })
 
 ipcMain.handle('workspace-delete', (_, relPath, isDirectory) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const abs = absInWorkspace(relPath)
   if (!abs) return { error: 'invalid-path' }
   if (abs === workspaceRootResolved()) return { error: 'denied' }
@@ -1315,6 +1389,8 @@ ipcMain.handle('workspace-delete', (_, relPath, isDirectory) => {
 })
 
 ipcMain.handle('workspace-rename', (_, relPath, newName) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const abs = absInWorkspace(relPath)
   if (!abs) return { error: 'invalid-path' }
   const nn = sanitizeTreeName(newName)
@@ -1348,6 +1424,8 @@ ipcMain.handle('workspace-read-file', (event, relPath) => {
 })
 
 ipcMain.handle('import-markdown-image', async (event, { mdFilePath }) => {
+  const denied = licenseDenied()
+  if (denied) return denied
   const win = getWinFromEvent(event)
   const root = workspaceRootResolved()
   let baseDir = null
@@ -1382,6 +1460,15 @@ ipcMain.handle('import-markdown-image', async (event, { mdFilePath }) => {
   } catch (e) {
     return { error: String(e.message) }
   }
+})
+
+ipcMain.handle('open-eula', async () => {
+  const name = config.locale === 'en' ? 'eula.en.txt' : 'eula.zh.txt'
+  const filePath = app.isPackaged
+    ? path.join(process.resourcesPath, name)
+    : path.join(__dirname, '../../build', name)
+  const result = await shell.openPath(filePath)
+  return result ? { error: result } : { ok: true }
 })
 
 ipcMain.handle('open-external', async (_, url) => {

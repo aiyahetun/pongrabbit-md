@@ -1,6 +1,10 @@
 'use strict'
 /* 编辑区 + 工作区文件树右键菜单（依赖 app.js 全局函数与状态） */
 
+function tt (key, vars) {
+  return window.i18nAPI ? window.i18nAPI.t(key, vars) : key
+}
+
 function setupContextMenu () {
   const menu = $('ctx-menu')
   const sub = $('ctx-submenu')
@@ -202,66 +206,66 @@ function setupContextMenu () {
     const items = []
     if (!prev && !ro) {
       items.push(
-        { id: 'undo', label: '撤销', shortcut: 'Ctrl+Z' },
-        { id: 'redo', label: '重做', shortcut: 'Ctrl+Y' },
+        { id: 'undo', label: tt('ctx.undo'), shortcut: 'Ctrl+Z' },
+        { id: 'redo', label: tt('ctx.redo'), shortcut: 'Ctrl+Y' },
         { sep: true },
-        { id: 'cut', label: '剪切', shortcut: 'Ctrl+X' },
-        { id: 'copy', label: '复制', shortcut: 'Ctrl+C' },
-        { id: 'paste', label: '粘贴', shortcut: 'Ctrl+V' },
-        { id: 'selectAll', label: '全选', shortcut: 'Ctrl+A' },
+        { id: 'cut', label: tt('ctx.cut'), shortcut: 'Ctrl+X' },
+        { id: 'copy', label: tt('ctx.copy'), shortcut: 'Ctrl+C' },
+        { id: 'paste', label: tt('ctx.paste'), shortcut: 'Ctrl+V' },
+        { id: 'selectAll', label: tt('ctx.selectAll'), shortcut: 'Ctrl+A' },
         { sep: true },
-        { id: 'find', label: '查找…', shortcut: 'Ctrl+F' }
+        { id: 'find', label: tt('ctx.find'), shortcut: 'Ctrl+F' }
       )
     } else {
       items.push(
-        { id: 'copy', label: '复制', shortcut: 'Ctrl+C' },
-        { id: 'selectAll', label: '全选', shortcut: 'Ctrl+A' }
+        { id: 'copy', label: tt('ctx.copy'), shortcut: 'Ctrl+C' },
+        { id: 'selectAll', label: tt('ctx.selectAll'), shortcut: 'Ctrl+A' }
       )
     }
 
     if (c.kind === 'table' && !ro && !prev) {
       items.push({ sep: true })
       items.push(
-        { id: 'tbl-row-above', label: '在上方插入行' },
-        { id: 'tbl-row-below', label: '在下方插入行' },
-        { id: 'tbl-col-left', label: '在左侧插入列' },
-        { id: 'tbl-col-right', label: '在右侧插入列' },
+        { id: 'tbl-row-above', label: tt('ctx.rowAbove') },
+        { id: 'tbl-row-below', label: tt('ctx.rowBelow') },
+        { id: 'tbl-col-left', label: tt('ctx.colLeft') },
+        { id: 'tbl-col-right', label: tt('ctx.colRight') },
         { sep: true },
-        { id: 'tbl-del-row', label: '删除当前行' },
-        { id: 'tbl-del-col', label: '删除当前列' },
-        { id: 'tbl-del-table', label: '删除表格' }
+        { id: 'tbl-del-row', label: tt('ctx.delRow') },
+        { id: 'tbl-del-col', label: tt('ctx.delCol') },
+        { id: 'tbl-del-table', label: tt('ctx.delTable') }
       )
     }
 
     if (c.kind === 'selection' && !ro && !prev) {
       items.push({ sep: true })
       items.push(
-        { id: 'bold', label: '加粗', shortcut: 'Ctrl+B' },
-        { id: 'italic', label: '斜体', shortcut: 'Ctrl+I' },
-        { id: 'strike', label: '删除线' },
-        { id: 'link', label: '插入链接…' }
+        { id: 'bold', label: tt('ctx.bold'), shortcut: 'Ctrl+B' },
+        { id: 'italic', label: tt('ctx.italic'), shortcut: 'Ctrl+I' },
+        { id: 'strike', label: tt('ctx.strike') },
+        { id: 'link', label: tt('ctx.link') }
       )
     }
 
     if (c.kind === 'image' && !ro && !prev) {
       items.push({ sep: true })
       items.push(
-        { id: 'img-replace', label: '替换图片…' },
-        { id: 'img-copy-path', label: '复制图片路径' },
-        { id: 'img-reveal', label: '在文件夹中显示' },
-        { id: 'img-delete', label: '删除图片' }
+        { id: 'img-replace', label: tt('ctx.imgReplace') },
+        { id: 'img-copy-path', label: tt('ctx.imgPath') },
+        { id: 'img-reveal', label: tt('ctx.imgReveal') },
+        { id: 'img-delete', label: tt('ctx.imgDelete') }
       )
     }
 
     if (c.kind === 'link') {
       items.push({ sep: true })
       if (prev) {
-        items.push({ id: 'link-open', label: '打开链接' })
+        items.push({ id: 'link-open', label: tt('ctx.linkOpen') })
       } else if (!ro) {
         items.push(
-          { id: 'link-open', label: '打开链接' },
-          { id: 'link-edit', label: '编辑链接…' },
-          { id: 'link-unlink', label: '移除链接' }
+          { id: 'link-open', label: tt('ctx.linkOpen') },
+          { id: 'link-edit', label: tt('ctx.linkEdit') },
+          { id: 'link-unlink', label: tt('ctx.linkUnlink') }
         )
       }
     }
@@ -269,21 +273,21 @@ function setupContextMenu () {
     if (c.kind === 'codeblock' && !ro && !prev) {
       items.push({ sep: true })
       items.push(
-        { id: 'code-copy', label: '复制代码' },
-        { id: 'code-delete', label: '删除代码块' }
+        { id: 'code-copy', label: tt('ctx.codeCopy') },
+        { id: 'code-delete', label: tt('ctx.codeDelete') }
       )
     }
 
     if (c.kind === 'empty' && !ro && !prev) {
       items.push({
         id: 'insert-sub',
-        label: '插入',
+        label: tt('ctx.insert'),
         children: [
-          { id: 'ins-table', label: '表格…' },
-          { id: 'ins-image', label: '图片…' },
-          { id: 'ins-link', label: '链接…' },
-          { id: 'ins-hr', label: '分割线' },
-          { id: 'ins-code', label: '代码块' }
+          { id: 'ins-table', label: tt('ctx.table') },
+          { id: 'ins-image', label: tt('ctx.image') },
+          { id: 'ins-link', label: tt('ctx.insLink') },
+          { id: 'ins-hr', label: tt('ctx.hr') },
+          { id: 'ins-code', label: tt('ctx.code') }
         ]
       })
     }
@@ -296,34 +300,34 @@ function setupContextMenu () {
     const hasWs = !!(w && w.root)
     const items = []
     if (!hasWs) {
-      items.push({ id: 'ws-pick', label: '选择工作区…' })
+      items.push({ id: 'ws-pick', label: tt('ctx.pickWs') })
       return items
     }
     if (c.empty) {
       items.push(
-        { id: 'ws-refresh', label: '刷新' },
+        { id: 'ws-refresh', label: tt('ctx.refresh') },
         { sep: true },
-        { id: 'tree-new-file', label: '新建笔记…' },
-        { id: 'tree-new-folder', label: '新建文件夹…' },
+        { id: 'tree-new-file', label: tt('ctx.newNote') },
+        { id: 'tree-new-folder', label: tt('ctx.newFolder') },
         { sep: true },
-        { id: 'ws-pick', label: '更换工作区…' }
+        { id: 'ws-pick', label: tt('ctx.changeWs') }
       )
       return items
     }
     if (!c.isDir) {
-      items.push({ id: 'tree-open', label: '打开' })
+      items.push({ id: 'tree-open', label: tt('ctx.open') })
       items.push({ sep: true })
     }
     if (c.isDir) {
-      items.push({ id: 'tree-new-file', label: '新建笔记…' })
-      items.push({ id: 'tree-new-folder', label: '新建文件夹…' })
+      items.push({ id: 'tree-new-file', label: tt('ctx.newNote') })
+      items.push({ id: 'tree-new-folder', label: tt('ctx.newFolder') })
       items.push({ sep: true })
     }
     items.push(
-      { id: 'tree-rename', label: '重命名…' },
-      { id: 'tree-delete', label: '删除' },
-      { id: 'tree-reveal', label: '在文件夹中显示' },
-      { id: 'tree-copy-path', label: '复制路径' }
+      { id: 'tree-rename', label: tt('ctx.rename') },
+      { id: 'tree-delete', label: tt('ctx.delete') },
+      { id: 'tree-reveal', label: tt('ctx.reveal') },
+      { id: 'tree-copy-path', label: tt('ctx.copyPath') }
     )
     if (c.isDir) items.splice(1, 0, { sep: true })
     return items
@@ -504,10 +508,10 @@ function setupContextMenu () {
     }
     if (action === 'tree-new-file') {
       treeContextDir = c.isDir ? c.relPath : parent
-      const name = await openPromptDialog({ title: '新笔记', label: '名称', defaultValue: '未命名.md', placeholder: '可省略 .md' })
+      const name = await openPromptDialog({ title: tt('prompt.newNote'), label: tt('prompt.name'), defaultValue: tt('prompt.untitled'), placeholder: '可省略 .md' })
       if (name == null || !String(name).trim()) return
       const r = await window.mobiAPI.workspaceCreateFile(treeContextDir, String(name).trim())
-      if (r.error) { alert(r.error === 'exists' ? '已存在同名文件' : String(r.error)); return }
+      if (r.error) { alert(r.error === 'exists' ? errText('exists-file') : errText(r.error)); return }
       if (treeContextDir) treeExpanded.add(treeContextDir)
       await refreshWorkspaceTree()
       await openWorkspaceRelFile(r.relPath)
@@ -515,20 +519,20 @@ function setupContextMenu () {
     }
     if (action === 'tree-new-folder') {
       treeContextDir = c.isDir ? c.relPath : parent
-      const name = await openPromptDialog({ title: '新文件夹', label: '名称', defaultValue: '新建文件夹' })
+      const name = await openPromptDialog({ title: tt('prompt.newFolder'), label: tt('prompt.name'), defaultValue: tt('prompt.folder') })
       if (name == null || !String(name).trim()) return
       const r = await window.mobiAPI.workspaceMkdir(treeContextDir, String(name).trim())
-      if (r.error) { alert(r.error === 'exists' ? '已存在同名文件夹' : String(r.error)); return }
+      if (r.error) { alert(r.error === 'exists' ? errText('exists-folder') : errText(r.error)); return }
       if (treeContextDir) treeExpanded.add(treeContextDir)
       if (r.relPath) treeExpanded.add(r.relPath)
       await refreshWorkspaceTree()
       return
     }
     if (action === 'tree-rename' && c.relPath) {
-      const name = await openPromptDialog({ title: '重命名', label: '新名称', defaultValue: c.name })
+      const name = await openPromptDialog({ title: tt('prompt.rename'), label: tt('prompt.newName'), defaultValue: c.name })
       if (name == null || !String(name).trim()) return
       const r = await window.mobiAPI.workspaceRename(c.relPath, String(name).trim())
-      if (r.error) { alert(String(r.error)); return }
+      if (r.error) { alert(errText(r.error)); return }
       const active = getCurrentWorkspaceRel()
       if (active === c.relPath && r.filePath) {
         currentFile = r.filePath
@@ -547,7 +551,7 @@ function setupContextMenu () {
       const msg = c.isDir ? `确定删除文件夹「${c.name}」及其全部内容？` : `确定删除「${c.name}」？`
       if (!confirm(msg)) return
       const r = await window.mobiAPI.workspaceDelete(c.relPath, c.isDir)
-      if (r.error) { alert(String(r.error)); return }
+      if (r.error) { alert(errText(r.error)); return }
       await refreshWorkspaceTree()
       return
     }

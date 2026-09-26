@@ -2,7 +2,12 @@
 /* ════ pongrabbit-MD v5 ═════════════════════════════════════════ */
 
 if (!window.mobiAPI) {
-  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;flex-direction:column;gap:12px"><div style="font-size:18px;font-weight:700">⚠ 初始化失败</div><div style="font-size:13px;opacity:.6">preload.js 未能加载，请重启</div><button type="button" onclick="location.reload()" style="padding:8px 20px;background:#356190;color:#fff;border:none;border-radius:6px;cursor:pointer">重新加载</button></div>'
+  document.documentElement.classList.remove('i18n-pending')
+  const enBoot = /^en/i.test((typeof navigator !== 'undefined' && navigator.language) || '')
+  const t0 = enBoot
+    ? ['⚠ Startup failed', 'preload.js did not load. Please restart the app.', 'Reload']
+    : ['⚠ 初始化失败', 'preload.js 未能加载，请重启', '重新加载']
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;flex-direction:column;gap:12px"><div style="font-size:18px;font-weight:700">' + t0[0] + '</div><div style="font-size:13px;opacity:.6">' + t0[1] + '</div><button type="button" onclick="location.reload()" style="padding:8px 20px;background:#356190;color:#fff;border:none;border-radius:6px;cursor:pointer">' + t0[2] + '</button></div>'
   throw new Error('mobiAPI not available')
 }
 
@@ -88,7 +93,63 @@ function detectPlatform () {
   return 'linux'
 }
 
+let i18nState = {
+  locale: 'zh',
+  store: 'cn',
+  stores: { cn: { url: '', price: '¥58' }, intl: { url: '', price: '$8.80' } },
+  packaged: false
+}
+
+function tt (key, vars) {
+  return window.i18nAPI ? window.i18nAPI.t(key, vars) : key
+}
+
+function errText (code) {
+  if (!code) return ''
+  const translated = tt('error.' + code)
+  return translated === 'error.' + code ? String(code) : translated
+}
+
+function currentStoreRow () {
+  return (i18nState.stores && i18nState.stores[i18nState.store]) || { url: '', price: '' }
+}
+
+function tableCellText () { return tt('table.cell') }
+function tableColText (n) { return tt('table.col', { n }) }
+
+function applyI18n () {
+  if (window.prmdApplyI18nDom) {
+    window.prmdApplyI18nDom({
+      tt,
+      locale: i18nState.locale,
+      state: i18nState,
+      cfg,
+      onAfterDom: () => {
+        if (typeof updateTableDialogUi === 'function') updateTableDialogUi()
+      }
+    })
+  }
+  const modeEl = $('status-mode')
+  if (modeEl && editMode) {
+    const modeKey = 'status.mode.' + editMode
+    modeEl.textContent = tt(modeKey) === modeKey ? editMode : tt(modeKey)
+  }
+  syncReadOnlyUi()
+  updateStatus()
+  syncGlassContrastSelectAvailability()
+  if (outlineItems.length || _outlineMdSource) scheduleOutlineRefresh()
+}
+
+async function loadI18n () {
+  if (!window.i18nAPI) return
+  i18nState = await window.i18nAPI.getState()
+  window.i18nAPI.useLocale(i18nState.locale)
+  applyI18n()
+}
+
 async function init() {
+  syncReadOnlyUi()
+  await loadI18n()
   setupShellOpenFileListener()
   const plat = detectPlatform()
   if (plat === 'darwin') body.classList.add('platform-darwin')
@@ -125,6 +186,7 @@ async function init() {
   setupContextMenu()
   setupMenu()
   await syncWorkspaceHint()
+  await refreshLicenseUi()
   await refreshWorkspaceTree()
   await loadRecentFiles()
   setMode('wysiwyg')
@@ -188,24 +250,37 @@ function inferReadOnlyFromOpen (r) {
   return !!(r && r.filePath && isReadOnlyCodePath(r.filePath))
 }
 
+let licenseLocked = false
+let licenseStatusReady = false
+
+function editsBlocked () {
+  return readOnlyDoc || licenseLocked || !licenseStatusReady
+}
+
 function syncReadOnlyUi () {
-  body.classList.toggle('doc-readonly', readOnlyDoc)
-  mdEditor.readOnly = readOnlyDoc
-  richEditor.contentEditable = readOnlyDoc ? 'false' : 'true'
+  const blocked = editsBlocked()
+  body.classList.toggle('doc-readonly', readOnlyDoc || licenseLocked)
+  mdEditor.readOnly = blocked
+  richEditor.contentEditable = blocked ? 'false' : 'true'
   const saveBtn = $('btn-save')
-  if (saveBtn) saveBtn.disabled = readOnlyDoc
+  if (saveBtn) saveBtn.disabled = blocked
   ;['btn-export-pdf', 'btn-export-html', 'btn-export-xhs-short', 'btn-export-xhs-long'].forEach(id => {
     const el = $(id)
-    if (el) el.disabled = readOnlyDoc
+    if (el) el.disabled = blocked
   })
   const exportTrigger = $('btn-export-menu')
-  if (exportTrigger) exportTrigger.disabled = readOnlyDoc
+  if (exportTrigger) exportTrigger.disabled = blocked
   const rep1 = $('find-replace-one')
   const repA = $('find-replace-all')
-  if (rep1) rep1.disabled = readOnlyDoc
-  if (repA) repA.disabled = readOnlyDoc
+  if (rep1) rep1.disabled = blocked
+  if (repA) repA.disabled = blocked
   const roTag = $('status-readonly-tag')
-  if (roTag) roTag.hidden = !readOnlyDoc
+  if (roTag) {
+    roTag.hidden = !(readOnlyDoc || licenseLocked)
+    roTag.textContent = licenseLocked ? tt('license.tagExpired') : tt('license.tagReadonly')
+  }
+  const saveAsBtn = $('btn-save-as')
+  if (saveAsBtn) saveAsBtn.disabled = licenseLocked || !licenseStatusReady
 }
 
 /** 载入磁盘文档（Markdown 或可只读打开的代码/配置） */
@@ -273,7 +348,7 @@ function compactMarkdownBlankLines (md) {
 }
 
 function compactCurrentMarkdown () {
-  if (readOnlyDoc) return false
+  if (editsBlocked()) return false
   const before = getCurrentMd()
   const after = compactMarkdownBlankLines(before)
   if (after === before) return false
@@ -317,9 +392,9 @@ function applyOpenedDocument (r) {
   readOnlyDoc = inferReadOnlyFromOpen(r)
   syncReadOnlyUi()
   setModified(false)
-  const baseTitle = bn(r.filePath) + (readOnlyDoc ? ' · 只读' : '')
-  setTitle(autoCompacted && !readOnlyDoc ? baseTitle + ' · 已整理空行' : baseTitle)
-  if (autoCompacted && !readOnlyDoc) setModified(true)
+  const baseTitle = bn(r.filePath) + (readOnlyDoc ? tt('title.readonly') : '')
+  setTitle(autoCompacted && !readOnlyDoc ? baseTitle + tt('title.compacted') : baseTitle)
+  if (autoCompacted && !editsBlocked()) setModified(true)
   if (readOnlyDoc) {
     _lastSrc = 'md'
     setMode('markdown')
@@ -408,6 +483,7 @@ function setupExportMenu () {
     menu.hidden = false
     trigger.setAttribute('aria-expanded', 'true')
     positionMenu()
+    void refreshLicenseUi({ quiet: true })
   }
   const toggleMenu = () => {
     if (menu.hidden) openMenu()
@@ -479,7 +555,8 @@ function syncUI(c){
   const bgd=$('bg-path-display')
   if(bgd)bgd.textContent=c.bgImagePath?c.bgImagePath:''
   const sw=$('settings-workspace-display')
-  if(sw)sw.textContent=(c.workspaceRoot&&String(c.workspaceRoot).trim())?c.workspaceRoot:'未选择'
+  if(sw)sw.textContent=(c.workspaceRoot&&String(c.workspaceRoot).trim())?c.workspaceRoot:tt('workspace.none')
+  applyI18n()
 }
 
 // ── Theme ────────────────────────────────────────────────────
@@ -565,14 +642,14 @@ function syncGlassContrastSelectAvailability () {
   if (!gtc) return
   const glass = body.classList.contains('theme-glass')
   const hasBg = body.classList.contains('glass-has-bg')
-  const hint = '自动会按背景图明暗切换文字颜色；也可手动指定'
+  const hint = tt('settings.glass.hint')
   if (!glass) {
     gtc.disabled = false
     gtc.title = hint
     return
   }
   gtc.disabled = !hasBg
-  gtc.title = hasBg ? hint : '无背景图时此项无效；请先选择背景图'
+  gtc.title = hasBg ? hint : tt('settings.glass.needBg')
 }
 
 async function syncWallpaperTextContrast (dataUrlForAuto) {
@@ -1031,7 +1108,7 @@ function isMdFocused () {
 }
 
 async function pastePlainTextInRichEditor () {
-  if (readOnlyDoc) return
+  if (editsBlocked()) return
   let text = ''
   try {
     text = await navigator.clipboard.readText()
@@ -1061,8 +1138,8 @@ function setMode(mode) {
     $('tab-'+m).classList.toggle('active', m === mode)
   )
   updateModeToolbars(mode)
-  const names = { wysiwyg: '可视化', markdown: '源码', preview: '预览', split: '分栏' }
-  $('status-mode').textContent = names[mode] || mode
+  const modeKey = 'status.mode.' + mode
+  $('status-mode').textContent = tt(modeKey) === modeKey ? mode : tt(modeKey)
 
   switch (mode) {
     case 'wysiwyg':
@@ -1133,8 +1210,14 @@ function setMode(mode) {
 
 // ════ 富文本编辑器 ══════════════════════════════════════════
 function setupRichEditor(){
+  richEditor.addEventListener('beforeinput', e => {
+    if (editsBlocked()) e.preventDefault()
+  })
   richEditor.addEventListener('paste', e => {
-    if (readOnlyDoc) return
+    if (editsBlocked()) {
+      e.preventDefault()
+      return
+    }
     e.preventDefault()
     const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || ''
     document.execCommand('insertText', false, text)
@@ -1156,6 +1239,22 @@ function setupRichEditor(){
   })
   richEditor.addEventListener('keydown',e=>{
     const acc=e.metaKey||e.ctrlKey
+    const key = e.key.toLowerCase()
+    if (editsBlocked()) {
+      if (!acc) {
+        const nav = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown','Shift','Escape']
+        if (!nav.includes(e.key)) e.preventDefault()
+        return
+      }
+      if (key === 'a') { e.preventDefault(); document.execCommand('selectAll'); return }
+      if (key === 'c') return
+      if (key === 's') { e.preventDefault(); e.stopPropagation(); e.shiftKey ? saveFileAs() : saveFile(); return }
+      if (key === 'f') { e.preventDefault(); e.stopPropagation(); showFindBar(); return }
+      if (key === 'n') { e.preventDefault(); e.stopPropagation(); newFile(); return }
+      if (key === 'o') { e.preventDefault(); e.stopPropagation(); openFile(); return }
+      e.preventDefault()
+      return
+    }
     if(acc&&e.key.toLowerCase()==='a'){e.preventDefault();document.execCommand('selectAll');return}
     if(acc){
       switch(e.key.toLowerCase()){
@@ -1173,6 +1272,15 @@ function setupRichEditor(){
   richEditor.addEventListener('mouseup',updateFmtBtns)
   richEditor.addEventListener('keyup',()=>{_lastSrc='wysiwyg';updateStatus();updateFmtBtns()})
 
+  const richToolbar = $('rich-toolbar')
+  if (richToolbar) {
+    richToolbar.addEventListener('click', e => {
+      if (!editsBlocked()) return
+      if (e.target.closest('#btn-find-r')) return
+      e.preventDefault()
+      e.stopPropagation()
+    }, true)
+  }
   $('r-bold').onclick=()=>{document.execCommand('bold');updateFmtBtns()}
   $('r-italic').onclick=()=>{document.execCommand('italic');updateFmtBtns()}
   $('r-underline').onclick=()=>{document.execCommand('underline');updateFmtBtns()}
@@ -1182,7 +1290,7 @@ function setupRichEditor(){
   $('r-align-right').onclick=()=>document.execCommand('justifyRight')
   $('r-ul').onclick=()=>document.execCommand('insertUnorderedList')
   $('r-ol').onclick=()=>document.execCommand('insertOrderedList')
-  $('r-task').onclick=()=>{document.execCommand('insertHTML',false,'<ul><li><input type="checkbox"> 任务项</li></ul>');setModified(true)}
+  $('r-task').onclick=()=>{document.execCommand('insertHTML',false,'<ul><li><input type="checkbox"> '+tt('task.item')+'</li></ul>');setModified(true)}
   $('r-quote').onclick=()=>wrapTag('blockquote')
   $('r-code').onclick=()=>wrapTag('code')
   $('r-codeblock').onclick=()=>insertCodeBlock()
@@ -1225,7 +1333,7 @@ function wrapTag(tag){
 function insertCodeBlock(){
   const sel=window.getSelection()
   const pre=document.createElement('pre'),code=document.createElement('code')
-  code.textContent=sel.rangeCount&&!sel.isCollapsed?sel.getRangeAt(0).toString():'// 代码'
+  code.textContent=sel.rangeCount&&!sel.isCollapsed?sel.getRangeAt(0).toString():tt('code.default')
   if(sel.rangeCount&&!sel.isCollapsed)sel.getRangeAt(0).deleteContents()
   pre.appendChild(code)
   document.execCommand('insertHTML',false,pre.outerHTML)
@@ -1259,8 +1367,8 @@ function attachCodeBlockCopyButtons (root) {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'code-copy-btn'
-    btn.title = '复制代码'
-    btn.setAttribute('aria-label', '复制代码')
+    btn.title = tt('code.copy')
+    btn.setAttribute('aria-label', tt('code.copy'))
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
     btn.addEventListener('click', async e => {
       e.preventDefault()
@@ -1271,10 +1379,10 @@ function attachCodeBlockCopyButtons (root) {
       const ok = await copyTextToClipboard(text)
       if (!ok) return
       btn.classList.add('copied')
-      btn.title = '已复制'
+      btn.title = tt('ui.copied')
       setTimeout(() => {
         btn.classList.remove('copied')
-        btn.title = '复制代码'
+        btn.title = tt('code.copy')
       }, 1500)
     })
     pre.appendChild(btn)
@@ -1320,6 +1428,15 @@ function setupMdToolbar(){
   })
   mdEditor.addEventListener('keyup',()=>{_lastSrc='md';updateStatus()})
 
+  const mdToolbar = $('md-toolbar')
+  if (mdToolbar) {
+    mdToolbar.addEventListener('click', e => {
+      if (!editsBlocked()) return
+      if (e.target.closest('#btn-find-md')) return
+      e.preventDefault()
+      e.stopPropagation()
+    }, true)
+  }
   $('fmt-bold').onclick=()=>wrapMd('**','**')
   $('fmt-italic').onclick=()=>wrapMd('*','*')
   $('fmt-strike').onclick=()=>wrapMd('~~','~~')
@@ -1340,7 +1457,7 @@ function setupMdToolbar(){
 }
 
 function handleMdEnter(e){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   const pos=mdEditor.selectionStart,v=mdEditor.value
   const ls=v.lastIndexOf('\n',pos-1)+1,line=v.substring(ls,pos)
   const tM=line.match(/^(\s*[-*+] )\[[ xX]\] (.*)/)
@@ -1382,7 +1499,7 @@ function setupStatusBar () {
     const label = btn.textContent
     try {
       await navigator.clipboard.writeText(currentFile)
-      btn.textContent = '已复制'
+      btn.textContent = tt('ui.copied')
       setTimeout(() => { btn.textContent = label }, 1400)
     } catch (_) {
       try {
@@ -1392,7 +1509,7 @@ function setupStatusBar () {
         ta.select()
         document.execCommand('copy')
         document.body.removeChild(ta)
-        btn.textContent = '已复制'
+        btn.textContent = tt('ui.copied')
         setTimeout(() => { btn.textContent = label }, 1400)
       } catch (__) {}
     }
@@ -1404,7 +1521,12 @@ function getCurrentMd(){
   return resolveSourceMarkdown()
 }
 async function newFile(){
+  if (licenseLocked) {
+    alert(licenseLockedMessage(licenseStatusCache))
+    return
+  }
   let r=await window.mobiAPI.newFile({hasChanges:isModified,promptTarget:'new-document'})
+  if(r&&r.error){alert(r.error);return}
   if(r.action==='cancel')return
   if(r.action==='save'){
     await saveFile()
@@ -1421,7 +1543,7 @@ async function newFile(){
     _mdEdited=false
     _wysiwygEdited=false
     resetEditorHistory()
-    setModified(false);setTitle('无题文档');updateStatus()
+    setModified(false);setTitle(tt('ui.untitled'));updateStatus()
     resetOutlineSessionState()
     refreshOutline()
     reportDocumentPathToMain(null)
@@ -1430,7 +1552,7 @@ async function newFile(){
 async function openFile(){
   const r=await window.mobiAPI.openFile()
   if(!r)return
-  if(r.error){alert(r.error==='unsupported'?'不支持的文件类型。':'无法打开文件。');return}
+  if(r.error){alert(r.error==='unsupported'?errText('unsupported'):errText('open-failed'));return}
   if(r.action==='focused-existing')return
   applyOpenedDocument(r)
   await loadRecentFiles();await refreshWorkspaceTree()
@@ -1439,14 +1561,21 @@ let _saveInFlight = false
 
 async function saveFile(){
   if (_saveInFlight) return
+  if (licenseLocked) {
+    alert(licenseLockedMessage(licenseStatusCache))
+    return
+  }
   if(readOnlyDoc){
-    alert('当前为只读代码/配置文件。请使用工具栏「另存为」保存到新位置（例如 .md）。')
+    alert(errText('readonly-hint'))
     return
   }
   _saveInFlight = true
   try {
     const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
-    if(r&&r.error==='read-only-doc'){alert('无法覆盖保存该类型文件。请使用「另存为」。');return}
+    if(r&&r.error){
+      alert(r.error==='read-only-doc'?errText('read-only-doc'):errText(r.error))
+      return
+    }
     if(r&&!r.error){
       currentFile=r;setModified(false);setTitle(bn(r))
       _pristineMd=getCurrentMd()
@@ -1460,9 +1589,14 @@ async function saveFile(){
 }
 async function saveFileAs(){
   if (_saveInFlight) return
+  if (licenseLocked) {
+    alert(licenseLockedMessage(licenseStatusCache))
+    return
+  }
   _saveInFlight = true
   try {
     const r=await window.mobiAPI.saveFileAs({content:getCurrentMd()})
+    if(r&&r.error){alert(r.error);return}
     if(r&&!r.error){
       currentFile=r
       _pristineMd=getCurrentMd()
@@ -1471,7 +1605,7 @@ async function saveFileAs(){
       readOnlyDoc=isReadOnlyCodePath(r)
       syncReadOnlyUi()
       setModified(false)
-      setTitle(bn(r)+(readOnlyDoc?' · 只读':''))
+      setTitle(bn(r)+(readOnlyDoc?tt('title.readonly'):''))
       if(readOnlyDoc){_lastSrc='md';setMode('markdown')}
       await loadRecentFiles();await refreshWorkspaceTree()
       updateStatus()
@@ -1481,35 +1615,45 @@ async function saveFileAs(){
   }
 }
 async function exportHtml(){
+  if (licenseLocked) {
+    alert(licenseLockedMessage(licenseStatusCache))
+    return
+  }
   try {
     await renderPreview()
-    await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):'无题'})
+    const r = await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):tt('ui.untitledShort')})
+    if (r && r.error) alert(errText(r.error))
   } catch (e) {
     console.error(e)
-    alert('导出 HTML 失败：' + (e.message || String(e)))
+    alert(tt('error.export-html', { message: e.message || String(e) }))
   }
 }
 async function exportPdf(){
+  if (licenseLocked) {
+    alert(licenseLockedMessage(licenseStatusCache))
+    return
+  }
   try {
     if (!window.mobiAPIPdf) {
-      alert('PDF 导出不可用')
+      alert(tt('error.pdf-unavailable'))
       return
     }
     await renderPreview()
-    await window.mobiAPIPdf.exportPdf({
+    const r = await window.mobiAPIPdf.exportPdf({
       html: previewEl.innerHTML,
-      title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : '无题',
+      title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : tt('ui.untitledShort'),
       theme: cfg.theme,
       fontFamily: cfg.fontFamily || 'system'
     })
+    if (r && r.error && r.error !== 'cancelled') alert(errText(r.error))
   } catch (e) {
     console.error(e)
-    alert('导出 PDF 失败：' + (e.message || String(e)))
+    alert(tt('error.export-pdf', { message: e.message || String(e) }))
   }
 }
 
 function setModified(v){
-  if(readOnlyDoc&&v)return
+  if(editsBlocked()&&v)return
   isModified=v;$('file-modified').style.display=v?'':'none'
 }
 function setTitle(n){$('file-name').textContent=n}
@@ -1518,9 +1662,9 @@ function updateStatus(){
   const text=editMode==='markdown'||_lastSrc==='md'?mdEditor.value:(richEditor.innerText||'')
   const cjk=(text.match(/[\u4e00-\u9fa5]/g)||[]).length
   const words=text.trim()===''?0:text.trim().split(/\s+/).length+cjk
-  $('status-words').textContent='字数 '+words
-  $('status-chars').textContent='字符 '+text.length
-  $('status-lines').textContent='行 '+text.split('\n').length
+  $('status-words').textContent=tt('status.words', { n: words })
+  $('status-chars').textContent=tt('status.chars', { n: text.length })
+  $('status-lines').textContent=tt('status.lines', { n: text.split('\n').length })
   const pathEl=$('status-path'), wrap=$('status-path-wrap'), copyBtn=$('btn-copy-doc-path')
   if(pathEl){
     if(currentFile){
@@ -1528,7 +1672,7 @@ function updateStatus(){
       if(wrap)wrap.title=currentFile
       if(copyBtn)copyBtn.disabled=false
     }else{
-      pathEl.textContent='未保存文档'
+      pathEl.textContent=tt('status.unsaved')
       if(wrap)wrap.title=''
       if(copyBtn)copyBtn.disabled=true
     }
@@ -1616,7 +1760,7 @@ function setupLinkClickHandlers () {
 }
 
 async function renderPreview(){
-  if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">正在渲染预览…</div>';return}
+  if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">'+tt('preview.loading')+'</div>';return}
   const md=getCurrentMd()
   if (_previewRenderedMd === md && previewEl.innerHTML.trim()) return
   try{
@@ -1761,7 +1905,7 @@ function renderOutlineList () {
   if (!outlineItems.length) {
     const empty = document.createElement('div')
     empty.className = 'outline-empty'
-    empty.textContent = '本文暂无标题'
+    empty.textContent = tt('outline.empty')
     list.appendChild(empty)
     return
   }
@@ -1777,8 +1921,8 @@ function renderOutlineList () {
       fold.className = 'outline-fold'
       const collapsed = outlineCollapsedH2.has(getH2FoldKey(idx))
       fold.textContent = collapsed ? '▸' : '▾'
-      fold.title = collapsed ? '展开子节' : '折叠子节'
-      fold.setAttribute('aria-label', collapsed ? '展开子节' : '折叠子节')
+      fold.title = collapsed ? tt('outline.expand') : tt('outline.collapse')
+      fold.setAttribute('aria-label', collapsed ? tt('outline.expand') : tt('outline.collapse'))
       fold.addEventListener('click', (e) => {
         e.stopPropagation()
         const key = getH2FoldKey(idx)
@@ -2238,7 +2382,7 @@ function redoEditorHistory () {
 
 // ════ MD 格式辅助 ════════════════════════════════════════════
 function insertMd(txt){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   const s=mdEditor.selectionStart,e2=mdEditor.selectionEnd
   mdEditor.value=mdEditor.value.substring(0,s)+txt+mdEditor.value.substring(e2)
   mdEditor.selectionStart=mdEditor.selectionEnd=s+txt.length
@@ -2248,7 +2392,7 @@ function insertMd(txt){
   scheduleRender()
 }
 function wrapMd(b,a){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   const s=mdEditor.selectionStart,e2=mdEditor.selectionEnd,sel=mdEditor.value.substring(s,e2)
   mdEditor.value=mdEditor.value.substring(0,s)+b+sel+a+mdEditor.value.substring(e2)
   if(sel){mdEditor.selectionStart=s+b.length;mdEditor.selectionEnd=e2+b.length}
@@ -2259,7 +2403,7 @@ function wrapMd(b,a){
   scheduleRender()
 }
 function prefixMd(prefix){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   const pos=mdEditor.selectionStart,v=mdEditor.value
   const ls=v.lastIndexOf('\n',pos-1)+1,le=v.indexOf('\n',pos),end=le===-1?v.length:le
   const line=v.substring(ls,end)
@@ -2283,7 +2427,7 @@ function applyWinState (s) {
   if (!btn) return
   const max = s === 'maximized'
   btn.textContent = max ? '❐' : '□'
-  btn.title = max ? '还原窗口' : '最大化'
+  btn.title = max ? tt('ui.restore') : tt('ui.maximize')
 }
 
 function getRichTableFromSelection () {
@@ -2338,24 +2482,24 @@ function updateTableDialogUi () {
   const rowsIn = $('table-rows')
   const colsIn = $('table-cols')
   if (extend) {
-    if (title) title.textContent = '扩展表格'
+    if (title) title.textContent = tt('table.extendTitle')
     if (hint) {
       hint.style.display = 'block'
-      hint.textContent = '在光标所在表格末尾追加行、右侧追加列（不会在单元格内嵌套新表）。'
+      hint.textContent = tt('table.extendHint')
     }
     if (headerRow) headerRow.style.display = 'none'
-    if ($('table-rows-label')) $('table-rows-label').textContent = '新增行数'
-    if ($('table-cols-label')) $('table-cols-label').textContent = '新增列数'
-    if (okBtn) okBtn.textContent = '添加'
+    if ($('table-rows-label')) $('table-rows-label').textContent = tt('table.rowsAdd')
+    if ($('table-cols-label')) $('table-cols-label').textContent = tt('table.colsAdd')
+    if (okBtn) okBtn.textContent = tt('table.add')
     if (rowsIn) { rowsIn.value = '1'; rowsIn.min = '0' }
     if (colsIn) { colsIn.value = '1'; colsIn.min = '0' }
   } else {
-    if (title) title.textContent = '插入表格'
+    if (title) title.textContent = tt('table.insertTitle')
     if (hint) hint.style.display = 'none'
     if (headerRow) headerRow.style.display = ''
-    if ($('table-rows-label')) $('table-rows-label').textContent = '行数'
-    if ($('table-cols-label')) $('table-cols-label').textContent = '列数'
-    if (okBtn) okBtn.textContent = '插入'
+    if ($('table-rows-label')) $('table-rows-label').textContent = tt('table.rows')
+    if ($('table-cols-label')) $('table-cols-label').textContent = tt('table.cols')
+    if (okBtn) okBtn.textContent = tt('table.insert')
     if (rowsIn) { rowsIn.value = '3'; rowsIn.min = '1' }
     if (colsIn) { colsIn.value = '3'; colsIn.min = '1' }
   }
@@ -2363,7 +2507,7 @@ function updateTableDialogUi () {
 
 function showTableDialog(){
   _tableExtendCtx = null
-  if (readOnlyDoc) return
+  if (editsBlocked()) return
   // 工具栏：仅插入新表（扩展行列请用表内右键）
   if (editMode === 'wysiwyg' || (editMode === 'split' && isRichFocused())) {
     const sel = window.getSelection()
@@ -2401,7 +2545,7 @@ function extendRichTable (table, addRows, addCols) {
       for (let c = 0; c < colCount; c++) {
         const td = document.createElement('td')
         td.contentEditable = 'true'
-        td.textContent = '内容'
+        td.textContent = tableCellText()
         tr.appendChild(td)
       }
       tableBodyEl(table).appendChild(tr)
@@ -2414,7 +2558,7 @@ function extendRichTable (table, addRows, addCols) {
       for (let c = 0; c < addCols; c++) {
         const cell = document.createElement(isHeaderRow ? 'th' : 'td')
         cell.contentEditable = 'true'
-        cell.textContent = isHeaderRow ? `列 ${existing + c + 1}` : '内容'
+        cell.textContent = isHeaderRow ? tableColText(existing + c + 1) : tableCellText()
         tr.appendChild(cell)
       }
     })
@@ -2434,7 +2578,7 @@ function extendMdTable (info, addRows, addCols) {
     block.forEach((line, i) => {
       const parts = line.trim().split('|')
       for (let c = 0; c < addCols; c++) {
-        const label = (i === 0 && !/^\s*\|[\s:]*-/.test(line)) ? `列 ${colCount + c + 1}` : '内容'
+        const label = (i === 0 && !/^\s*\|[\s:]*-/.test(line)) ? tableColText(colCount + c + 1) : tableCellText()
         parts.splice(parts.length - 1, 0, ` ${label} `)
       }
       block[i] = parts.join('|')
@@ -2443,7 +2587,7 @@ function extendMdTable (info, addRows, addCols) {
   }
   if (addRows > 0) {
     for (let r = 0; r < addRows; r++) {
-      block.push('| ' + Array(colCount).fill('内容').join(' | ') + ' |')
+      block.push('| ' + Array(colCount).fill(tableCellText()).join(' | ') + ' |')
     }
   }
   lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
@@ -2546,7 +2690,7 @@ function richTableInsertRow (table, rowIndex, where) {
   const colCount = richTableColCount(table)
   if (!colCount) return
   const tr = document.createElement('tr')
-  for (let c = 0; c < colCount; c++) tr.appendChild(richMakeCell(false, '内容'))
+  for (let c = 0; c < colCount; c++) tr.appendChild(richMakeCell(false, tableCellText()))
   const body = tableBodyEl(table)
   const ref = rows[rowIndex]
   if (!ref) body.appendChild(tr)
@@ -2566,7 +2710,7 @@ function richTableInsertCol (table, colIndex, where) {
   table.querySelectorAll('tr').forEach((tr, ri) => {
     const cells = [...tr.querySelectorAll('th, td')]
     const isHeader = ri === 0 && tr.querySelector('th')
-    const cell = richMakeCell(isHeader, isHeader ? `列 ${cells.length + 1}` : '内容')
+    const cell = richMakeCell(isHeader, isHeader ? tableColText(cells.length + 1) : tableCellText())
     const ref = cells[colIndex]
     if (!ref) tr.appendChild(cell)
     else if (where === 'before') tr.insertBefore(cell, ref)
@@ -2683,7 +2827,7 @@ function getMdTableCellContext (pos) {
 function mdTableInsertRow (ctx, where) {
   const block = [...ctx.info.block]
   const colCount = countMdTableCols(block[0])
-  const newLine = mdJoinRow(Array(colCount).fill('内容'))
+  const newLine = mdJoinRow(Array(colCount).fill(tableCellText()))
   let insertAt = ctx.rowLineIdx
   if (mdIsSeparatorLine(block[insertAt])) {
     insertAt = where === 'before' ? insertAt : insertAt + 1
@@ -2702,7 +2846,7 @@ function mdTableInsertCol (ctx, where) {
       return mdJoinRow(Array(baseCols + 1).fill(':---'))
     }
     const cells = mdRowCells(line)
-    const label = (i === 0) ? `列 ${cells.length + 1}` : '内容'
+    const label = (i === 0) ? tableColText(cells.length + 1) : tableCellText()
     const ins = where === 'before' ? ctx.colIndex : ctx.colIndex + 1
     cells.splice(ins, 0, label)
     return mdJoinRow(cells)
@@ -2753,12 +2897,12 @@ function insertRichTable(rows,cols,header){
   let html = '<table>'
   if(header){
     html += '<tr>'
-    for(let c=0;c<cols;c++) html += `<th contenteditable="true">列 ${c+1}</th>`
+    for(let c=0;c<cols;c++) html += `<th contenteditable="true">${tableColText(c + 1)}</th>`
     html += '</tr>'
   }
   for(let r=0;r<rows;r++){
     html += '<tr>'
-    for(let c=0;c<cols;c++) html += '<td contenteditable="true">内容</td>'
+    for(let c=0;c<cols;c++) html += `<td contenteditable="true">${tableCellText()}</td>`
     html += '</tr>'
   }
   html += '</table>'
@@ -2802,9 +2946,9 @@ function insertRichTable(rows,cols,header){
 }
 function insertMdTable(rows,cols,header){
   let md='\n'
-  md+='| '+Array.from({length:cols},(_,i)=>`列 ${i+1}`).join(' | ')+' |\n'
+  md+='| '+Array.from({length:cols},(_,i)=>tableColText(i + 1)).join(' | ')+' |\n'
   md+='| '+Array(cols).fill(':---').join(' | ')+' |\n'
-  for(let r=0;r<rows;r++)md+='| '+Array(cols).fill('内容').join(' | ')+' |\n'
+  for(let r=0;r<rows;r++)md+='| '+Array(cols).fill(tableCellText()).join(' | ')+' |\n'
   insertMd(md+'\n')
 }
 
@@ -2867,7 +3011,7 @@ function doFind(){
   if(!q){findCount.textContent='';return}
   const v=mdEditor.value,re=new RegExp(escRe(q),'gi');let m
   while((m=re.exec(v))!==null)findMatches.push(m.index)
-  findCount.textContent=findMatches.length?`${Math.min(findIdx+1,findMatches.length)}/${findMatches.length}`:'无结果'
+  findCount.textContent=findMatches.length?`${Math.min(findIdx+1,findMatches.length)}/${findMatches.length}`:tt('find.none')
   if(findMatches.length){findIdx=0;if(editMode==='markdown')mdEditor.setSelectionRange(findMatches[0],findMatches[0]+q.length)}
 }
 function findNav(d){
@@ -2877,7 +3021,7 @@ function findNav(d){
   if(editMode==='markdown')mdEditor.setSelectionRange(findMatches[findIdx],findMatches[findIdx]+findInput.value.length)
 }
 function replaceOne(){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   if(!findMatches.length)return
   const i=findMatches[findIdx]
   mdEditor.value=mdEditor.value.substring(0,i)+replaceInput.value+mdEditor.value.substring(i+findInput.value.length)
@@ -2887,7 +3031,7 @@ function replaceOne(){
   doFind()
 }
 function replaceAll(){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   if(!findInput.value)return
   mdEditor.value=mdEditor.value.replace(new RegExp(escRe(findInput.value),'g'),replaceInput.value)
   recordMdHistory()
@@ -3005,7 +3149,7 @@ function setupMenu(){
 async function loadRecentFiles(){
   const files=await window.mobiAPI.getRecentFiles()
   const list=$('recent-list');list.innerHTML=''
-  if(!files.length){list.innerHTML='<div class="recent-empty-hint">暂无最近打开的文档</div>';return}
+  if(!files.length){list.innerHTML='<div class="recent-empty-hint"></div>';list.firstChild.textContent=tt('recent.empty');return}
   files.forEach(f=>{
     const el=document.createElement('div');el.className='recent-item';el.textContent=bn(f);el.title=f
     el.onclick=async()=>{
@@ -3048,7 +3192,7 @@ function openPromptDialog({title,label,defaultValue,placeholder}){
     const dlg=$('prompt-dialog')
     const inp=$('prompt-dialog-input')
     $('prompt-dialog-title').textContent=title
-    $('prompt-dialog-label').textContent=label||'名称'
+    $('prompt-dialog-label').textContent=label||tt('prompt.name')
     inp.value=defaultValue!=null?String(defaultValue):''
     inp.placeholder=placeholder||''
     dlg.style.display='flex'
@@ -3195,10 +3339,10 @@ function openXhsStylePicker () {
         b.setAttribute('role', 'option')
         const nm = document.createElement('div')
         nm.className = 'xhs-read-card-name'
-        nm.textContent = def.name
+        nm.textContent = tt('xhs.read.' + def.id)
         const sub = document.createElement('div')
         sub.className = 'xhs-read-card-sub'
-        sub.textContent = def.sub
+        sub.textContent = tt('xhs.read.' + def.id + '.sub')
         b.appendChild(nm)
         b.appendChild(sub)
         rgrid.appendChild(b)
@@ -3215,10 +3359,10 @@ function openXhsStylePicker () {
         b.setAttribute('role', 'option')
         const nm = document.createElement('div')
         nm.className = 'xhs-read-card-name'
-        nm.textContent = def.name
+        nm.textContent = tt('xhs.pag.' + def.id)
         const sub = document.createElement('div')
         sub.className = 'xhs-read-card-sub'
-        sub.textContent = def.sub
+        sub.textContent = tt('xhs.pag.' + def.id + '.sub')
         b.appendChild(nm)
         b.appendChild(sub)
         pgrid.appendChild(b)
@@ -3240,10 +3384,10 @@ function openXhsStylePicker () {
       }
       const nm = document.createElement('div')
       nm.className = 'xhs-style-card-name'
-      nm.textContent = def.name
+      nm.textContent = tt('xhs.style.' + def.id)
       const sub = document.createElement('div')
       sub.className = 'xhs-style-card-sub'
-      sub.textContent = def.sub
+      sub.textContent = tt('xhs.style.' + def.id + '.sub')
       b.appendChild(strip)
       b.appendChild(nm)
       b.appendChild(sub)
@@ -3258,10 +3402,10 @@ function openXhsStylePicker () {
       b.setAttribute('role', 'option')
       const nm = document.createElement('div')
       nm.className = 'xhs-font-card-name'
-      nm.textContent = def.name
+      nm.textContent = tt('xhs.font.' + def.id)
       const sub = document.createElement('div')
       sub.className = 'xhs-font-card-sub'
-      sub.textContent = def.sub
+      sub.textContent = tt('xhs.font.' + def.id + '.sub')
       b.appendChild(nm)
       b.appendChild(sub)
       fgrid.appendChild(b)
@@ -3473,17 +3617,17 @@ async function getXhsExportTitle () {
     const raw = ($('file-name').textContent || '').trim()
     if (raw && raw !== '无题文档') t = raw.replace(/\.md$/i, '')
   }
-  if (!t || t === '无题' || t === '无题文档') {
+  if (!t || t === '无题' || t === '无题文档' || t === 'Untitled' || t === tt('ui.untitled')) {
     const v = await openPromptDialog({
-      title: '导出图片',
-      label: '文档标题',
-      defaultValue: '未命名笔记',
-      placeholder: '用作文件名与短图文件夹名'
+      title: tt('xhs.exportTitle'),
+      label: tt('xhs.docTitle'),
+      defaultValue: tt('xhs.untitledNote'),
+      placeholder: tt('xhs.titlePlaceholder')
     })
     if (v == null) return null
-    t = String(v).trim() || '未命名笔记'
+    t = String(v).trim() || tt('xhs.untitledNote')
   }
-  return t.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || '未命名笔记'
+  return t.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || tt('xhs.untitledNote')
 }
 
 function canvasToPngDataUrl (canvas) {
@@ -4960,7 +5104,7 @@ function stripDocPathFromXhsSurface (surface) {
       /^[a-zA-Z]:[/\\]/.test(txt) ||
       uniq.some(v => v && txt.includes(v))
     if (!txt || looksPath) {
-      a.textContent = '本地链接'
+      a.textContent = tt('link.local')
       // #region agent log
       _xhsStripLinkTouched++
       // #endregion
@@ -5427,6 +5571,7 @@ async function captureXhsSurfaceToCanvas (surface, canvasBg) {
 }
 
 async function exportXhsShort () {
+  if (!(await ensureXhsExportAllowed())) return
   let title
   let sessionActive = false
   try {
@@ -5446,19 +5591,19 @@ async function exportXhsShort () {
     const st = xhsStyleById(styleId)
     const mdParts = splitMdForXhsExport(getCurrentMd(), readability, pagination)
     const useParts = mdParts.length > 1
-    const pagLabel = xhsPaginationById(pagination).name
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（${pagLabel}）依次导出（文件名：段号-页号.png），是否继续？`)) return
+    const pagLabel = tt('xhs.pag.' + pagination)
+    if (useParts && !confirm(tt('xhs.confirmShort', { parts: mdParts.length, mode: pagLabel }))) return
 
     sessionActive = true
     xhsBeginExportSession()
-    showXhsExportProgress('准备导出…')
-    setXhsExportProgress(0, 0, '正在分析分页…')
+    showXhsExportProgress(tt('xhs.prepareShort'))
+    setXhsExportProgress(0, 0, tt('xhs.analyzing'))
     const plans = []
     for (let si = 0; si < mdParts.length; si++) {
       const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdParts[si] : null, readability)
       const unitPages = xhsFilterExportUnitPages(
         await paginateXhsSurfaceBlocksAsync(surface, usableH, styleId, fontId, readability, (done, total) => {
-          setXhsExportProgress(done, total, `正在分析分页… ${done}/${total}`)
+          setXhsExportProgress(done, total, tt('xhs.analyzingCount', { done, total }))
         }, xhsGetShortLayoutCapWithFlex())
       )
       clearXhsExportHost()
@@ -5481,7 +5626,7 @@ async function exportXhsShort () {
       files.push({ name, data })
       pageIdxRef.v++
       doneSteps++
-      setXhsExportProgress(doneSteps, totalSteps, `正在渲染第 ${doneSteps} / ${totalSteps} 页…`)
+      setXhsExportProgress(doneSteps, totalSteps, tt('xhs.rendering', { done: doneSteps, total: totalSteps }))
       await new Promise(r => setTimeout(r, 0))
     }
     for (const pl of plans) {
@@ -5505,24 +5650,27 @@ async function exportXhsShort () {
       }
     }
 
-    setXhsExportProgress(totalSteps, totalSteps, '正在写入文件…')
+    setXhsExportProgress(totalSteps, totalSteps, tt('xhs.writing'))
     const r = await window.mobiAPI.xhsExportWriteMany({ parentPath: pick.path, folderName: title, files })
-    if (r && r.error) { alert(r.error); return }
-    const segHint = useParts ? `（${mdParts.length} 段共 ${files.length} 张）` : `（${files.length} 张）`
+    if (r && r.error) { alert(errText(r.error)); return }
+    const segHint = useParts
+      ? tt('xhs.doneShortExtra', { parts: mdParts.length, count: files.length })
+      : tt('xhs.doneShortCount', { count: files.length })
     const splitHint = xhsExportSplitNoticeCount > 0
-      ? `\n其中 ${xhsExportSplitNoticeCount} 处内容已自动拆分。`
+      ? tt('xhs.splitSome', { count: xhsExportSplitNoticeCount })
       : ''
-    alert(`已导出短图${segHint}，每张 ${pageW}×${pageH}，智能分页：\n${r.dir}${splitHint}`)
+    alert(tt('xhs.doneShort', { extra: segHint, w: pageW, h: pageH, dir: r.dir, split: splitHint }))
   } catch (e) {
     if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
-    alert('导出短图失败：' + (e.message || String(e)))
+    alert(tt('error.export-short', { message: e.message || String(e) }))
   } finally {
     if (sessionActive) xhsEndExportSession()
   }
 }
 
 async function exportXhsLong () {
+  if (!(await ensureXhsExportAllowed())) return
   let title
   let sessionActive = false
   try {
@@ -5538,24 +5686,24 @@ async function exportXhsLong () {
     const maxLongH = xhsGetMaxLongContentHeight(readability)
     const mdParts = splitMdForXhsExport(getCurrentMd(), readability, pagination)
     const useParts = mdParts.length > 1
-    const pagLabel = xhsPaginationById(pagination).name
+    const pagLabel = tt('xhs.pag.' + pagination)
 
     const p = await window.mobiAPI.xhsExportSaveLongPath({ defaultTitle: title })
     if (!p || p.cancelled || !p.filePath) return
-    if (useParts && !confirm(`当前文档将按 ${mdParts.length} 段（${pagLabel}）导出，超长段自动续页，是否继续？`)) return
+    if (useParts && !confirm(tt('xhs.confirmLong', { parts: mdParts.length, mode: pagLabel }))) return
     const st = xhsStyleById(styleId)
 
     sessionActive = true
     xhsBeginExportSession()
-    showXhsExportProgress('准备导出长图…')
-    setXhsExportProgress(0, 0, '正在分析分页…')
+    showXhsExportProgress(tt('xhs.prepareLong'))
+    setXhsExportProgress(0, 0, tt('xhs.analyzing'))
     const plans = []
     const longLayoutCap = xhsGetLongLayoutPageCap()
     for (let si = 0; si < mdParts.length; si++) {
       const surface = await buildXhsExportSurface(styleId, fontId, useParts ? mdParts[si] : null, readability)
       const unitPages = xhsFilterExportUnitPages(
         await paginateXhsSurfaceBlocksAsync(surface, maxLongH, styleId, fontId, readability, (done, total) => {
-          setXhsExportProgress(done, total, `正在分析分页… ${done}/${total}`)
+          setXhsExportProgress(done, total, tt('xhs.analyzingCount', { done, total }))
         }, longLayoutCap)
       )
       clearXhsExportHost()
@@ -5588,7 +5736,7 @@ async function exportXhsLong () {
               data: await canvasToPngDataUrl(fixed)
             })
             doneSteps++
-            setXhsExportProgress(doneSteps, totalSteps, `正在渲染第 ${doneSteps} / ${totalSteps} 页…`)
+            setXhsExportProgress(doneSteps, totalSteps, tt('xhs.rendering', { done: doneSteps, total: totalSteps }))
             await new Promise(r => setTimeout(r, 0))
           }
           await pushLongCanvas(canvas)
@@ -5601,31 +5749,31 @@ async function exportXhsLong () {
       }
     }
 
-    setXhsExportProgress(totalSteps, totalSteps, '正在写入文件…')
+    setXhsExportProgress(totalSteps, totalSteps, tt('xhs.writing'))
     const totalFiles = allLongFiles.length
     const outPaths = xhsDerivedLongPngPaths(p.filePath, totalFiles)
     for (let fi = 0; fi < totalFiles; fi++) {
       const w = await window.mobiAPI.xhsExportWriteOne({ filePath: outPaths[fi], data: allLongFiles[fi].data })
-      if (w && w.error) { alert(w.error); throw new Error(w.error) }
+      if (w && w.error) { alert(errText(w.error)); throw new Error(w.error) }
     }
 
     if (totalFiles > 1) {
       const splitHint = xhsExportSplitNoticeCount > 0
-        ? `\n其中 ${xhsExportSplitNoticeCount} 处内容已自动拆分。`
+        ? tt('xhs.splitSome', { count: xhsExportSplitNoticeCount })
         : ''
-      alert(`已导出 ${totalFiles} 张长图（自动续页，固定宽 ${pageW}px）：\n${outPaths[0]} … ${outPaths[outPaths.length - 1]}${splitHint}`)
+      alert(tt('xhs.doneLongMany', { count: totalFiles, w: pageW, from: outPaths[0], to: outPaths[outPaths.length - 1], split: splitHint }))
     } else if (totalFiles === 1) {
       const splitHint = xhsExportSplitNoticeCount > 0
-        ? `\n（${xhsExportSplitNoticeCount} 处内容已自动拆分）`
+        ? tt('xhs.splitOne', { count: xhsExportSplitNoticeCount })
         : ''
-      alert(`长图已保存（宽 ${pageW}px，高随内容）：\n` + outPaths[0] + splitHint)
+      alert(tt('xhs.doneLongOne', { w: pageW, path: outPaths[0], split: splitHint }))
     } else {
-      alert('没有可导出的内容（文档为空或均为空白页）')
+      alert(tt('xhs.empty'))
     }
   } catch (e) {
     if (String(e && e.message) === 'xhs-height-limit') return
     console.error(e)
-    alert('导出长图失败：' + (e.message || String(e)))
+    alert(tt('xhs.failLong', { message: e.message || String(e) }))
   } finally {
     if (sessionActive) xhsEndExportSession()
   }
@@ -5634,10 +5782,10 @@ async function exportXhsLong () {
 async function syncWorkspaceHint(){
   const w=await window.mobiAPI.workspaceGetRoot()
   const hint=$('workspace-path-hint')
-  if(hint)hint.textContent=w.root||'未选择工作区，点击 📁 指定文件夹'
+  if(hint)hint.textContent=w.root||tt('workspace.hint')
   if(w.root)cfg.workspaceRoot=w.root
   const sw=$('settings-workspace-display')
-  if(sw)sw.textContent=w.root||'未选择'
+  if(sw)sw.textContent=w.root||tt('workspace.none')
 }
 
 function getCurrentWorkspaceRel(){
@@ -5754,16 +5902,20 @@ function setupWorkspaceSidebar(){
   }
   $('btn-workspace-refresh').onclick=()=>{void refreshWorkspaceTree()}
   $('btn-tree-new-file').onclick=async()=>{
+    if (licenseLocked) {
+      alert(licenseLockedMessage(licenseStatusCache))
+      return
+    }
     const name=await openPromptDialog({
-      title:'新笔记',
-      label:'名称',
-      defaultValue:'未命名.md',
-      placeholder:'可省略 .md，将自动补全'
+      title: tt('prompt.newNote'),
+      label: tt('prompt.name'),
+      defaultValue: tt('prompt.untitled'),
+      placeholder: tt('prompt.mdExtHint')
     })
     if(name==null||!String(name).trim())return
     const r=await window.mobiAPI.workspaceCreateFile(treeContextDir,String(name).trim())
     if(r.error){
-      alert(r.error==='exists'?'已存在同名文件':r.error==='no-workspace'?'请先选择工作区':String(r.error))
+      alert(errText(r.error))
       return
     }
     if(treeContextDir)treeExpanded.add(treeContextDir)
@@ -5771,15 +5923,19 @@ function setupWorkspaceSidebar(){
     await openWorkspaceRelFile(r.relPath)
   }
   $('btn-tree-new-folder').onclick=async()=>{
+    if (licenseLocked) {
+      alert(licenseLockedMessage(licenseStatusCache))
+      return
+    }
     const name=await openPromptDialog({
-      title:'新文件夹',
-      label:'名称',
-      defaultValue:'新建文件夹'
+      title: tt('prompt.newFolder'),
+      label: tt('prompt.name'),
+      defaultValue: tt('prompt.folder')
     })
     if(name==null||!String(name).trim())return
     const r=await window.mobiAPI.workspaceMkdir(treeContextDir,String(name).trim())
     if(r.error){
-      alert(r.error==='exists'?'已存在同名文件夹':r.error==='no-workspace'?'请先选择工作区':String(r.error))
+      alert(errText(r.error))
       return
     }
     if(treeContextDir)treeExpanded.add(treeContextDir)
@@ -5789,7 +5945,7 @@ function setupWorkspaceSidebar(){
 }
 
 async function insertMarkdownImageAtCursor(){
-  if(readOnlyDoc)return
+  if(editsBlocked())return
   const r=await window.mobiAPI.importMarkdownImage({mdFilePath:currentFile||''})
   if(r.cancelled)return
   if(r.error){alert(r.error);return}
@@ -5873,7 +6029,117 @@ function setupSettingsPanel(){
       await syncWallpaperTextContrast(lastBgDataUrl)
     }
   }
+  const btnAct = $('btn-license-activate')
+  if (btnAct) {
+    btnAct.onclick = async () => {
+      const r = await window.mobiAPI.licenseActivate($('license-input').value)
+      if (!r || !r.ok) {
+        alert(r && r.error ? errText(r.error) : tt('license.failed'))
+        return
+      }
+      $('license-input').value = ''
+      await refreshLicenseUi({ quiet: true })
+      alert(tt('license.activatedAlert', { email: r.email }))
+    }
+  }
+  const btnBuy = $('btn-license-buy')
+  if (btnBuy) {
+    btnBuy.onclick = async () => {
+      const url = currentStoreRow().url
+      if (!url) return
+      await window.mobiAPI.openExternal(url)
+    }
+  }
+  const localeSelect = $('locale-select')
+  if (localeSelect) {
+    localeSelect.onchange = async function () {
+      const state = await window.i18nAPI.setLocale(this.value)
+      if (!state || state.error) return
+      i18nState = Object.assign({}, i18nState, state)
+      applyI18n()
+      await refreshLicenseUi({ quiet: true })
+      await loadRecentFiles()
+      await syncWorkspaceHint()
+    }
+  }
+  const pickStore = async (store) => {
+    const state = await window.i18nAPI.setStore(store)
+    if (!state || state.error) return
+    i18nState = Object.assign({}, i18nState, state)
+    applyI18n()
+    await refreshLicenseUi({ quiet: true })
+  }
+  const storeCn = $('store-cn')
+  const storeIntl = $('store-intl')
+  if (storeCn) storeCn.onclick = () => { void pickStore('cn') }
+  if (storeIntl) storeIntl.onclick = () => { void pickStore('intl') }
+  const eulaBtn = $('btn-eula')
+  if (eulaBtn) eulaBtn.onclick = () => { void window.mobiAPI.openEula() }
 }
+
+let licenseStatusCache = null
+
+function licenseLockedMessage () {
+  return tt('license.lockedAlert', { price: currentStoreRow().price || '' })
+}
+
+function renderLicenseStatus (st) {
+  const hint = $('xhs-license-hint')
+  const statusEl = $('license-status')
+  licenseLocked = !(st && st.unlocked)
+  syncReadOnlyUi()
+  if (!st) return
+  const price = currentStoreRow().price || ''
+  let menuText = ''
+  let settingsText = ''
+  if (st.licensed) {
+    menuText = tt('license.menuOn')
+    settingsText = tt('license.activated', { email: st.email })
+  } else if (st.unlocked) {
+    menuText = tt('license.menuTrial', { days: st.daysLeft })
+    settingsText = tt('license.trial', { days: st.daysLeft, price })
+  } else {
+    menuText = tt('license.menuOff')
+    settingsText = tt('license.locked', { price })
+  }
+  if (hint) hint.textContent = menuText
+  if (statusEl) statusEl.textContent = settingsText
+}
+
+async function refreshLicenseUi (opts) {
+  if (!window.mobiAPI || !window.mobiAPI.licenseStatus) {
+    licenseStatusReady = true
+    licenseLocked = false
+    syncReadOnlyUi()
+    return null
+  }
+  let st = null
+  try {
+    st = await window.mobiAPI.licenseStatus({ consumeReminder: !(opts && opts.quiet) })
+  } catch (e) {
+    console.error(e)
+    licenseStatusReady = true
+    licenseLocked = true
+    syncReadOnlyUi()
+    if (!(opts && opts.quiet)) alert(tt('error.status-unknown'))
+    return null
+  }
+  licenseStatusReady = true
+  licenseStatusCache = st
+  renderLicenseStatus(st)
+  if (opts && opts.quiet) return st
+  if (st && !st.unlocked) alert(licenseLockedMessage())
+  else if (st && st.shouldRemind) alert(tt('license.remind', { days: st.daysLeft }))
+  return st
+}
+
+async function ensureXhsExportAllowed () {
+  const st = await refreshLicenseUi({ quiet: true })
+  if (!st || st.unlocked) return true
+  alert(licenseLockedMessage())
+  return false
+}
+
 function save_cfg(p){
   Object.assign(cfg,p)
   return window.mobiAPI.saveConfig(p)
@@ -5887,7 +6153,11 @@ function syncVolumeSliderVar(){
 // ════ 音频 ══════════════════════════════════════════════════
 function getCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();return audioCtx}
 
-const AMBIENT_LABELS={rain:'雨声',forest:'森林',ocean:'海浪',wind:'城市',fire:'篝火',cafe:'咖啡馆'}
+function ambientLabel (type) {
+  const k = 'noise.' + type
+  const s = tt(k)
+  return s === k ? type : s
+}
 
 function setupMusicPanel(){
   document.querySelectorAll('.noise-btn').forEach(btn=>{
@@ -5950,7 +6220,7 @@ async function startNoise(type){
       return
     }
     $('btn-stop-noise').style.display=''
-    setMusicStatus(AMBIENT_LABELS[type]||type)
+    setMusicStatus(ambientLabel(type))
     return
   }
   startNoiseSynth(type)
@@ -6018,7 +6288,7 @@ function startNoiseSynth(type){
   gain.gain.linearRampToValueAtTime(musicVolume,ctx.currentTime+(type==='rain'?2.6:2.2))
   noiseNodes={kind:'synth',source:src,gain,filter:filt,soften}
   $('btn-stop-noise').style.display=''
-  setMusicStatus(AMBIENT_LABELS[type]||type)
+  setMusicStatus(ambientLabel(type))
 }
 
 function stopAmbientImmediate(){

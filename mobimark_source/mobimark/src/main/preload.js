@@ -1,8 +1,42 @@
 'use strict'
 const { contextBridge, ipcRenderer } = require('electron')
+const fs = require('fs')
 const path = require('path')
 const { pathToFileURL } = require('url')
+const { t, localeFromOs, STORES } = require('../shared/i18n')
 const pkg = require('../../package.json')
+
+function userConfigPath () {
+  const appFolder = (pkg && pkg.name) || 'pongrabbit-md'
+  if (process.platform === 'win32') {
+    const roaming = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming')
+    return path.join(roaming, appFolder, 'config.json')
+  }
+  if (process.platform === 'darwin') {
+    return path.join(process.env.HOME || '', 'Library', 'Application Support', appFolder, 'config.json')
+  }
+  const xdg = process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '', '.config')
+  return path.join(xdg, appFolder, 'config.json')
+}
+
+function readInitialI18n () {
+  let locale
+  let store
+  let musicFolder = ''
+  try {
+    const raw = fs.readFileSync(userConfigPath(), 'utf8')
+    const c = JSON.parse(raw)
+    musicFolder = c.musicFolder || ''
+    if (c.locale === 'zh' || c.locale === 'en') locale = c.locale
+    if (c.store === 'cn' || c.store === 'intl') store = c.store
+  } catch (_) {}
+  if (!locale) locale = localeFromOs(typeof navigator !== 'undefined' ? navigator.language : 'zh-CN')
+  if (!store) store = locale === 'zh' ? 'cn' : 'intl'
+  return { locale, store, stores: STORES, musicFolder }
+}
+
+const i18nInitial = readInitialI18n()
+let uiLocale = i18nInitial.locale
 
 const shellOpenListeners = []
 let pendingShellOpenPath = null
@@ -18,6 +52,19 @@ ipcRenderer.on('shell-open-file', (_, filePath) => {
 /** 必须先注册 IPC 桥接；若在之前抛错会导致 window.mobiAPI 不存在 → 初始化失败 */
 contextBridge.exposeInMainWorld('pengPlatform', process.platform)
 contextBridge.exposeInMainWorld('appVersion', pkg.version || '')
+contextBridge.exposeInMainWorld('i18nInitial', i18nInitial)
+
+contextBridge.exposeInMainWorld('i18nAPI', {
+  t: (key, vars) => t(uiLocale, key, vars),
+  getState: () => ipcRenderer.invoke('i18n-state'),
+  setLocale: async (locale) => {
+    const state = await ipcRenderer.invoke('i18n-set-locale', locale)
+    if (state && state.locale) uiLocale = state.locale
+    return state
+  },
+  setStore: (store) => ipcRenderer.invoke('i18n-set-store', store),
+  useLocale: (locale) => { uiLocale = locale === 'en' ? 'en' : 'zh' }
+})
 
 contextBridge.exposeInMainWorld('mobiAPI', {
   debugSessionLog: (entry) => ipcRenderer.invoke('debug-session-log', entry),
@@ -34,6 +81,8 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   xhsExportSaveLongPath: (a) => ipcRenderer.invoke('xhs-export-save-long-path', a),
   xhsExportWriteOne: (a) => ipcRenderer.invoke('xhs-export-write-one', a),
   xhsExportWriteMany: (a) => ipcRenderer.invoke('xhs-export-write-many', a),
+  licenseStatus: (opts) => ipcRenderer.invoke('license-status', opts),
+  licenseActivate: (token) => ipcRenderer.invoke('license-activate', token),
   showInFolder: (p) => ipcRenderer.send('show-in-folder', p),
   pickBgImage: () => ipcRenderer.invoke('pick-bg-image'),
   loadBgImageDataUrl: (fp) => ipcRenderer.invoke('load-bg-image-data-url', fp),
@@ -62,6 +111,7 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   resolveMarkdownImage: (mdPath, src) => ipcRenderer.invoke('resolve-markdown-image', mdPath, src),
   resolveMarkdownLink: (mdPath, href) => ipcRenderer.invoke('resolve-markdown-link', mdPath, href),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openEula: () => ipcRenderer.invoke('open-eula'),
   openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   /** 本地绝对路径 → file: URL（正确编码中文、空格、全角符号等，供 CSS background / img 使用） */
   pathToFileUrl: (fp) => {

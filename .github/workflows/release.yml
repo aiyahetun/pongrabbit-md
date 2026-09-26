@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mobimark_source/mobimark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobimark_source/mobimark/package-lock.json
+      - run: npm ci
+      - run: npm run release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            mobimark_source/mobimark/dist-*/pongrabbit-MD Setup *.exe
+            mobimark_source/mobimark/dist-*/pongrabbit-MD *.exe
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobimark_source/mobimark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobimark_source/mobimark/package-lock.json
+      - run: npm ci
+      - run: npm run build-mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            mobimark_source/mobimark/dist-*/pongrabbit-MD-*.dmg
+            mobimark_source/mobimark/dist-*/pongrabbit-MD-*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+      - name: Flatten artifacts
+        run: |
+          mkdir -p upload
+          find assets -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) -exec cp {} upload/ \;
+          ls -la upload/
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER=$(node -p "require('./mobimark_source/mobimark/package.json').version")
+            echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Delete older releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          echo "Publishing tag: $TAG"
+          gh release list --json tagName -q '.[].tagName' | while read -r name; do
+            [[ -z "$name" ]] && continue
+            [[ "$name" == "$TAG" ]] && continue
+            echo "Deleting old release: $name"
+            gh release delete "$name" -y --cleanup-tag || true
+          done
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          NOTES="docs/RELEASE_NOTES_v${TAG#v}.md"
+          [[ -f "$NOTES" ]] || NOTES="docs/RELEASES.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" -y --cleanup-tag || true
+          fi
+          gh release create "$TAG" upload/* \
+            --title "pongrabbit-MD ${TAG#v}" \
+            --notes-file "$NOTES" \
+            --latest

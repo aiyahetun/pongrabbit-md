@@ -45,62 +45,63 @@
   <div id="titlebar-drag">
     <img id="app-icon" src="icons/app-icon.png" width="20" height="20" alt="" decoding="async">
     <span id="app-title">pongrabbit-MD</span>
-    <span id="file-name">无题文档</span>
+    <span id="file-name" data-i18n-skip></span>
     <span id="file-modified" class="hidden">●</span>
   </div>
   <div id="titlebar-controls">
-    <button type="button" class="tbtn" id="btn-minimize" title="最小化">─</button>
-    <button type="button" class="tbtn" id="btn-maximize" title="最大化（再次点击还原）">□</button>
-    <button type="button" class="tbtn danger" id="btn-close" title="关闭">✕</button>
+    <button type="button" class="tbtn" id="btn-minimize" data-i18n-title="ui.minimize" title="最小化">─</button>
+    <button type="button" class="tbtn" id="btn-maximize" data-i18n-title="ui.maximize" title="最大化（再次点击还原）">□</button>
+    <button type="button" class="tbtn danger" id="btn-close" data-i18n-title="ui.close" title="关闭">✕</button>
   </div>
 </div>
 
 <!-- 模式栏 + 顶部操作 -->
 <div id="mode-bar">
   <div id="mode-tabs" class="mode-tabs-shell">
-    <button type="button" class="mode-tab active" id="tab-wysiwyg" title="所见即所得编辑">✏ 可视化</button>
-    <button type="button" class="mode-tab" id="tab-markdown" title="Markdown 源码">⌨ 源码</button>
-    <button type="button" class="mode-tab" id="tab-preview" title="仅预览（只读）">👁 预览</button>
-    <button type="button" class="mode-tab" id="tab-split" title="左侧富文本、右侧 Markdown 源码">⊞ 分栏</button>
+    <button type="button" class="mode-tab active" id="tab-wysiwyg" data-i18n="ui.wysiwyg" data-i18n-title="ui.wysiwygTip" title="所见即所得编辑">✏ 可视化</button>
+    <button type="button" class="mode-tab" id="tab-markdown" data-i18n="ui.markdown" data-i18n-title="ui.markdownTip" title="Markdown 源码">⌨ 源码</button>
+    <button type="button" class="mode-tab" id="tab-preview" data-i18n="ui.preview" data-i18n-title="ui.previewTip" title="仅预览（只读）">👁 预览</button>
+    <button type="button" class="mode-tab" id="tab-split" data-i18n="ui.split" data-i18n-title="ui.splitTip" title="左侧富文本、右侧 Markdown 源码">⊞ 分栏</button>
   </div>
   <div id="mode-actions">
     <div id="mode-actions-scroll">
-      <button type="button" class="action-btn" id="btn-new">新建</button>
-      <button type="button" class="action-btn" id="btn-open">打开</button>
-      <button type="button" class="action-btn" id="btn-save" title="保存（Ctrl+S）">保存</button>
-      <button type="button" class="action-btn" id="btn-save-as" title="另存为（Ctrl+Shift+S）">另存为</button>
+      <button type="button" class="action-btn" id="btn-new" data-i18n="ui.new">新建</button>
+      <button type="button" class="action-btn" id="btn-open" data-i18n="ui.open">打开</button>
+      <button type="button" class="action-btn" id="btn-save" data-i18n="ui.save" data-i18n-title="ui.saveTip" title="保存（Ctrl+S）">保存</button>
+      <button type="button" class="action-btn" id="btn-save-as" data-i18n="ui.saveAs" data-i18n-title="ui.saveAsTip" title="另存为（Ctrl+Shift+S）">另存为</button>
       <div class="tool-sep"></div>
       <div class="export-menu-wrap" id="export-menu-wrap">
-        <button type="button" class="action-btn export-menu-trigger" id="btn-export-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">导出 ▾</button>
+        <button type="button" class="action-btn export-menu-trigger" id="btn-export-menu" data-i18n="ui.export" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">导出 ▾</button>
         <div id="export-menu" class="export-menu" role="menu" hidden>
-          <button type="button" class="export-menu-item" id="btn-export-pdf" role="menuitem">导出 PDF</button>
-          <button type="button" class="export-menu-item" id="btn-export-html" role="menuitem">导出 HTML</button>
+          <button type="button" class="export-menu-item" id="btn-export-pdf" data-i18n="ui.exportPdf" role="menuitem">导出 PDF</button>
+          <button type="button" class="export-menu-item" id="btn-export-html" data-i18n="ui.exportHtml" role="menuitem">导出 HTML</button>
           <div class="export-menu-sep" role="separator"></div>
-          <button type="button" class="export-menu-item" id="btn-export-xhs-short" role="menuitem" title="选风格与字体；短图固定 2× 像素分页（约 2160×2880）">短图 3:4</button>
-          <button type="button" class="export-menu-item" id="btn-export-xhs-long" role="menuitem" title="选风格与字体；长图固定 2× 像素（宽约 2160）">长图 3:4</button>
+          <button type="button" class="export-menu-item" id="btn-export-xhs-short" data-i18n="ui.exportShort" data-i18n-title="ui.shortTip" role="menuitem" title="选风格与字体；短图固定 2× 像素分页（约 2160×2880）">短图 3:4</button>
+          <button type="button" class="export-menu-item" id="btn-export-xhs-long" data-i18n="ui.exportLong" data-i18n-title="ui.longTip" role="menuitem" title="选风格与字体；长图固定 2× 像素（宽约 2160）">长图 3:4</button>
+          <div id="xhs-license-hint" class="export-menu-hint"></div>
         </div>
       </div>
     </div>
     <div id="mode-actions-trail">
       <div class="tool-sep"></div>
-      <button type="button" class="action-btn btn-music-pill" id="btn-music" title="音效与音乐">
+      <button type="button" class="action-btn btn-music-pill" id="btn-music" data-i18n-title="ui.musicTip" title="音效与音乐">
         <svg class="btn-music-ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>
-        <span>音效与音乐</span>
+        <span data-i18n="ui.music">音效与音乐</span>
       </button>
       <div class="tool-sep"></div>
-      <div class="theme-switcher" role="group" aria-label="主题">
-        <button type="button" class="theme-seg" id="btn-theme-light" title="浅色主题" aria-pressed="false">
+      <div class="theme-switcher" role="group" data-i18n-aria="ui.themes" aria-label="主题">
+        <button type="button" class="theme-seg" id="btn-theme-light" data-i18n-title="ui.themeLightTip" title="浅色主题" aria-pressed="false">
           <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2.5v1.8M12 19.7V22M4.2 12H2.5M21.5 12H19.8M5.6 5.6 4.3 4.3M19.7 19.7l-1.3-1.3M5.6 18.4 4.3 19.7M19.7 4.3l-1.3 1.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
         </button>
-        <button type="button" class="theme-seg" id="btn-theme-dark" title="深色主题" aria-pressed="false">
+        <button type="button" class="theme-seg" id="btn-theme-dark" data-i18n-title="ui.themeDarkTip" title="深色主题" aria-pressed="false">
           <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
         </button>
-        <button type="button" class="theme-seg" id="btn-theme-glass" title="毛玻璃主题" aria-pressed="false">
+        <button type="button" class="theme-seg" id="btn-theme-glass" data-i18n-title="ui.themeGlassTip" title="毛玻璃主题" aria-pressed="false">
           <svg class="theme-seg-svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 3.2c-2.8 4.3-5.6 6.9-5.6 10.1a5.6 5.6 0 0 0 11.2 0c0-3.2-2.8-5.8-5.6-10.1z" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/><path d="M8.2 12.5h7.6" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"/><path d="M9.5 15.2h5" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" opacity=".45"/></svg>
         </button>
       </div>
       <div class="tool-sep"></div>
-      <button type="button" class="action-btn" id="btn-settings" title="设置">⚙ 设置</button>
+      <button type="button" class="action-btn" id="btn-settings" data-i18n="ui.settings" data-i18n-title="ui.settingsTip" title="设置">⚙ 设置</button>
     </div>
   </div>
 </div>
@@ -108,117 +109,119 @@
 <!-- 富文本工具栏 -->
 <div id="rich-toolbar">
   <select id="heading-select">
-    <option value="p">正文</option>
-    <option value="h1">一级标题</option>
-    <option value="h2">二级标题</option>
-    <option value="h3">三级标题</option>
-    <option value="h4">四级标题</option>
+      <option value="p" data-i18n="ui.body">正文</option>
+      <option value="h1" data-i18n="ui.h1">一级标题</option>
+      <option value="h2" data-i18n="ui.h2">二级标题</option>
+      <option value="h3" data-i18n="ui.h3">三级标题</option>
+      <option value="h4" data-i18n="ui.h4">四级标题</option>
   </select>
   <div class="tool-sep rich-toolbar-sep"></div>
   <div class="fmt-pill" id="rich-fmt-pill">
-  <button type="button" class="fmt-btn" id="r-bold" title="加粗" aria-label="加粗"><b>B</b></button>
-  <button type="button" class="fmt-btn" id="r-italic" title="斜体" aria-label="斜体"><i>I</i></button>
-  <button type="button" class="fmt-btn" id="r-underline" title="下划线" aria-label="下划线"><u>U</u></button>
-  <button type="button" class="fmt-btn" id="r-strike" title="删除线" aria-label="删除线"><s>S</s></button>
+  <button type="button" class="fmt-btn" id="r-bold" data-i18n-title="fmt.bold" data-i18n-aria="fmt.bold" title="加粗" aria-label="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="r-italic" data-i18n-title="fmt.italic" data-i18n-aria="fmt.italic" title="斜体" aria-label="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="r-underline" data-i18n-title="fmt.underline" data-i18n-aria="fmt.underline" title="下划线" aria-label="下划线"><u>U</u></button>
+  <button type="button" class="fmt-btn" id="r-strike" data-i18n-title="fmt.strike" data-i18n-aria="fmt.strike" title="删除线" aria-label="删除线"><s>S</s></button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-align-left" title="左对齐" aria-label="左对齐">⬅</button>
-  <button type="button" class="fmt-btn" id="r-align-center" title="居中" aria-label="居中">↔</button>
-  <button type="button" class="fmt-btn" id="r-align-right" title="右对齐" aria-label="右对齐">➡</button>
+  <button type="button" class="fmt-btn" id="r-align-left" data-i18n-title="fmt.alignLeft" data-i18n-aria="fmt.alignLeft" title="左对齐" aria-label="左对齐">⬅</button>
+  <button type="button" class="fmt-btn" id="r-align-center" data-i18n-title="fmt.alignCenter" data-i18n-aria="fmt.alignCenter" title="居中" aria-label="居中">↔</button>
+  <button type="button" class="fmt-btn" id="r-align-right" data-i18n-title="fmt.alignRight" data-i18n-aria="fmt.alignRight" title="右对齐" aria-label="右对齐">➡</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-ul" title="无序列表" aria-label="无序列表">•≡</button>
-  <button type="button" class="fmt-btn" id="r-ol" title="有序列表" aria-label="有序列表">1≡</button>
-  <button type="button" class="fmt-btn" id="r-task" title="任务列表" aria-label="任务列表">☑</button>
+  <button type="button" class="fmt-btn" id="r-ul" data-i18n-title="fmt.ul" data-i18n-aria="fmt.ul" title="无序列表" aria-label="无序列表">•≡</button>
+  <button type="button" class="fmt-btn" id="r-ol" data-i18n-title="fmt.ol" data-i18n-aria="fmt.ol" title="有序列表" aria-label="有序列表">1≡</button>
+  <button type="button" class="fmt-btn" id="r-task" data-i18n-title="fmt.task" data-i18n-aria="fmt.task" title="任务列表" aria-label="任务列表">☑</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="r-quote" title="引用" aria-label="引用">❝</button>
-  <button type="button" class="fmt-btn" id="r-code" title="行内代码" aria-label="行内代码">`</button>
-  <button type="button" class="fmt-btn" id="r-codeblock" title="代码块" aria-label="代码块">&lt;/&gt;</button>
-  <button type="button" class="fmt-btn" id="r-link" title="链接" aria-label="插入链接">🔗</button>
-  <button type="button" class="fmt-btn" id="r-image" title="插入图片" aria-label="插入图片">🖼</button>
-  <button type="button" class="fmt-btn" id="r-table" title="表格" aria-label="插入表格">▦</button>
-  <button type="button" class="fmt-btn" id="r-hr" title="分割线" aria-label="分割线">─</button>
+  <button type="button" class="fmt-btn" id="r-quote" data-i18n-title="fmt.quote" data-i18n-aria="fmt.quote" title="引用" aria-label="引用">❝</button>
+  <button type="button" class="fmt-btn" id="r-code" data-i18n-title="fmt.code" data-i18n-aria="fmt.code" title="行内代码" aria-label="行内代码">`</button>
+  <button type="button" class="fmt-btn" id="r-codeblock" data-i18n-title="fmt.codeBlock" data-i18n-aria="fmt.codeBlock" title="代码块" aria-label="代码块">&lt;/&gt;</button>
+  <button type="button" class="fmt-btn" id="r-link" data-i18n-title="fmt.link" data-i18n-aria="fmt.link" title="链接" aria-label="插入链接">🔗</button>
+  <button type="button" class="fmt-btn" id="r-image" data-i18n-title="fmt.image" data-i18n-aria="fmt.image" title="插入图片" aria-label="插入图片">🖼</button>
+  <button type="button" class="fmt-btn" id="r-table" data-i18n-title="fmt.table" data-i18n-aria="fmt.table" title="表格" aria-label="插入表格">▦</button>
+  <button type="button" class="fmt-btn" id="r-hr" data-i18n-title="fmt.hr" data-i18n-aria="fmt.hr" title="分割线" aria-label="分割线">─</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-r" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-r" data-i18n="fmt.findBtn" data-i18n-title="fmt.findTip" data-i18n-aria="fmt.find" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
   </div>
 </div>
 
 <!-- MD 工具栏 -->
 <div id="md-toolbar" style="display:none">
   <div class="fmt-pill md-fmt-pill">
-  <button type="button" class="fmt-btn" id="fmt-bold" title="加粗" aria-label="加粗"><b>B</b></button>
-  <button type="button" class="fmt-btn" id="fmt-italic" title="斜体" aria-label="斜体"><i>I</i></button>
-  <button type="button" class="fmt-btn" id="fmt-strike" title="删除线" aria-label="删除线"><s>S</s></button>
+  <button type="button" class="fmt-btn" id="fmt-bold" data-i18n-title="fmt.bold" data-i18n-aria="fmt.bold" title="加粗" aria-label="加粗"><b>B</b></button>
+  <button type="button" class="fmt-btn" id="fmt-italic" data-i18n-title="fmt.italic" data-i18n-aria="fmt.italic" title="斜体" aria-label="斜体"><i>I</i></button>
+  <button type="button" class="fmt-btn" id="fmt-strike" data-i18n-title="fmt.strike" data-i18n-aria="fmt.strike" title="删除线" aria-label="删除线"><s>S</s></button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-h1" title="一级标题" aria-label="一级标题">一级</button>
-  <button type="button" class="fmt-btn" id="fmt-h2" title="二级标题" aria-label="二级标题">二级</button>
-  <button type="button" class="fmt-btn" id="fmt-h3" title="三级标题" aria-label="三级标题">三级</button>
+  <button type="button" class="fmt-btn" id="fmt-h1" data-i18n="fmt.h1short" data-i18n-title="fmt.h1" data-i18n-aria="fmt.h1" title="一级标题" aria-label="一级标题">一级</button>
+  <button type="button" class="fmt-btn" id="fmt-h2" data-i18n="fmt.h2short" data-i18n-title="fmt.h2" data-i18n-aria="fmt.h2" title="二级标题" aria-label="二级标题">二级</button>
+  <button type="button" class="fmt-btn" id="fmt-h3" data-i18n="fmt.h3short" data-i18n-title="fmt.h3" data-i18n-aria="fmt.h3" title="三级标题" aria-label="三级标题">三级</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-quote" title="引用" aria-label="引用">引用</button>
-  <button type="button" class="fmt-btn" id="fmt-code" title="行内代码" aria-label="行内代码">代码</button>
-  <button type="button" class="fmt-btn" id="fmt-codeblock" title="代码块" aria-label="代码块">代码块</button>
-  <button type="button" class="fmt-btn" id="fmt-link" title="链接" aria-label="插入链接">链接</button>
-  <button type="button" class="fmt-btn" id="fmt-image" title="插入图片" aria-label="插入图片">图片</button>
+  <button type="button" class="fmt-btn" id="fmt-quote" data-i18n="fmt.quoteShort" data-i18n-title="fmt.quote" data-i18n-aria="fmt.quote" title="引用" aria-label="引用">引用</button>
+  <button type="button" class="fmt-btn" id="fmt-code" data-i18n="fmt.codeShort" data-i18n-title="fmt.code" data-i18n-aria="fmt.code" title="行内代码" aria-label="行内代码">代码</button>
+  <button type="button" class="fmt-btn" id="fmt-codeblock" data-i18n="fmt.codeBlockShort" data-i18n-title="fmt.codeBlock" data-i18n-aria="fmt.codeBlock" title="代码块" aria-label="代码块">代码块</button>
+  <button type="button" class="fmt-btn" id="fmt-link" data-i18n="fmt.linkShort" data-i18n-title="fmt.link" data-i18n-aria="fmt.link" title="链接" aria-label="插入链接">链接</button>
+  <button type="button" class="fmt-btn" id="fmt-image" data-i18n="fmt.imageShort" data-i18n-title="fmt.image" data-i18n-aria="fmt.image" title="插入图片" aria-label="插入图片">图片</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn" id="fmt-ul" title="无序列表" aria-label="无序列表">无序</button>
-  <button type="button" class="fmt-btn" id="fmt-ol" title="有序列表" aria-label="有序列表">有序</button>
-  <button type="button" class="fmt-btn" id="fmt-task" title="任务列表" aria-label="任务列表">☑</button>
-  <button type="button" class="fmt-btn" id="fmt-table" title="表格" aria-label="插入表格">表格</button>
-  <button type="button" class="fmt-btn" id="fmt-hr" title="分割线" aria-label="分割线">分割线</button>
+  <button type="button" class="fmt-btn" id="fmt-ul" data-i18n="fmt.ulShort" data-i18n-title="fmt.ul" data-i18n-aria="fmt.ul" title="无序列表" aria-label="无序列表">无序</button>
+  <button type="button" class="fmt-btn" id="fmt-ol" data-i18n="fmt.olShort" data-i18n-title="fmt.ol" data-i18n-aria="fmt.ol" title="有序列表" aria-label="有序列表">有序</button>
+  <button type="button" class="fmt-btn" id="fmt-task" data-i18n-title="fmt.task" data-i18n-aria="fmt.task" title="任务列表" aria-label="任务列表">☑</button>
+  <button type="button" class="fmt-btn" id="fmt-table" data-i18n="fmt.tableShort" data-i18n-title="fmt.table" data-i18n-aria="fmt.table" title="表格" aria-label="插入表格">表格</button>
+  <button type="button" class="fmt-btn" id="fmt-hr" data-i18n="fmt.hrShort" data-i18n-title="fmt.hr" data-i18n-aria="fmt.hr" title="分割线" aria-label="分割线">分割线</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
-  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-md" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
+  <button type="button" class="fmt-btn fmt-btn-wide" id="btn-find-md" data-i18n="fmt.findBtn" data-i18n-title="fmt.findTip" data-i18n-aria="fmt.find" title="查找（Ctrl+F）" aria-label="查找">🔍 查找</button>
   </div>
 </div>
 
 <!-- 查找栏 -->
 <div id="find-bar" style="display:none">
-  <input type="text" id="find-input" placeholder="查找…">
-  <input type="text" id="replace-input" placeholder="替换为…">
-  <button type="button" id="find-prev" title="上一处">↑</button>
-  <button type="button" id="find-next" title="下一处">↓</button>
-  <button type="button" id="find-replace-one">替换</button>
-  <button type="button" id="find-replace-all">全部替换</button>
+  <input type="text" id="find-input" data-i18n-placeholder="find.placeholder" placeholder="查找…">
+  <input type="text" id="replace-input" data-i18n-placeholder="find.replace" placeholder="替换为…">
+  <button type="button" id="find-prev" data-i18n-title="find.prevTip" title="上一处">↑</button>
+  <button type="button" id="find-next" data-i18n-title="find.nextTip" title="下一处">↓</button>
+  <button type="button" id="find-replace-one" data-i18n="find.replaceOne">替换</button>
+  <button type="button" id="find-replace-all" data-i18n="find.replaceAll">全部替换</button>
   <span id="find-count"></span>
-  <button type="button" id="find-close" title="关闭查找">✕</button>
+  <button type="button" id="find-close" data-i18n-title="find.close" title="关闭查找">✕</button>
 </div>
 
 <!-- 主区域 -->
 <div id="main-area">
   <aside id="sidebar">
     <div class="sidebar-toolbar">
-      <button type="button" class="sidebar-icon-btn" id="btn-sidebar-collapse" title="折叠侧栏" aria-label="折叠侧栏">◀</button>
-      <div class="sidebar-tab-shell" role="tablist" aria-label="侧栏视图">
-        <button type="button" class="sidebar-tab active" id="sidebar-tab-outline" role="tab" aria-selected="true" aria-controls="sidebar-panel-outline" data-tab="outline">目录</button>
-        <button type="button" class="sidebar-tab" id="sidebar-tab-files" role="tab" aria-selected="false" aria-controls="sidebar-panel-files" data-tab="files">文件</button>
+      <button type="button" class="sidebar-icon-btn" id="btn-sidebar-collapse" data-i18n-title="sidebar.collapse" data-i18n-aria="sidebar.collapse" title="折叠侧栏" aria-label="折叠侧栏">◀</button>
+      <div class="sidebar-tab-shell" role="tablist" data-i18n-aria="sidebar.tabViews" aria-label="侧栏视图">
+        <button type="button" class="sidebar-tab active" id="sidebar-tab-outline" role="tab" aria-selected="true" aria-controls="sidebar-panel-outline" data-tab="outline" data-i18n="sidebar.outline">目录</button>
+        <button type="button" class="sidebar-tab" id="sidebar-tab-files" role="tab" aria-selected="false" aria-controls="sidebar-panel-files" data-tab="files" data-i18n="sidebar.files">文件</button>
       </div>
       <div class="sidebar-toolbar-actions" id="sidebar-files-actions" hidden>
-        <button type="button" class="sidebar-icon-btn" id="btn-workspace-pick" title="选择文件夹" aria-label="选择工作区文件夹">📁</button>
-        <button type="button" class="sidebar-icon-btn" id="btn-workspace-refresh" title="刷新" aria-label="刷新文件树">↻</button>
+        <button type="button" class="sidebar-icon-btn" id="btn-workspace-pick" data-i18n-title="sidebar.pickFolder" data-i18n-aria="sidebar.pickFolder" title="选择文件夹" aria-label="选择工作区文件夹">📁</button>
+        <button type="button" class="sidebar-icon-btn" id="btn-workspace-refresh" data-i18n-title="sidebar.refreshTree" data-i18n-aria="sidebar.refreshTree" title="刷新" aria-label="刷新文件树">↻</button>
       </div>
     </div>
     <div id="sidebar-panel-outline" class="sidebar-panel active" role="tabpanel" aria-labelledby="sidebar-tab-outline">
-      <div id="outline-list" class="outline-list" aria-label="文档目录"></div>
+      <div id="outline-list" class="outline-list" data-i18n-aria="sidebar.outlineAria" aria-label="文档目录"></div>
     </div>
     <div id="sidebar-panel-files" class="sidebar-panel" role="tabpanel" aria-labelledby="sidebar-tab-files" hidden>
       <div id="workspace-path-hint" class="workspace-hint"></div>
-      <div id="file-tree" class="file-tree" aria-label="工作区文件"></div>
+      <div id="file-tree" class="file-tree" data-i18n-aria="sidebar.filesTreeAria" aria-label="工作区文件"></div>
       <div class="sidebar-tree-actions">
-        <button type="button" class="sidebar-action-btn" id="btn-tree-new-file">＋ 笔记</button>
-        <button type="button" class="sidebar-action-btn" id="btn-tree-new-folder">＋ 文件夹</button>
+        <button type="button" class="sidebar-action-btn" id="btn-tree-new-file" data-i18n="sidebar.newNoteBtn">＋ 笔记</button>
+        <button type="button" class="sidebar-action-btn" id="btn-tree-new-folder" data-i18n="sidebar.newFolderBtn">＋ 文件夹</button>
       </div>
-      <div class="sidebar-header">最近打开</div>
+      <div class="sidebar-header" data-i18n="sidebar.recent">最近打开</div>
       <div id="recent-list"></div>
     </div>
   </aside>
-  <button type="button" id="sidebar-rail" class="sidebar-rail" title="展开侧栏" aria-label="展开侧栏" hidden>▶</button>
+  <button type="button" id="sidebar-rail" class="sidebar-rail" data-i18n-title="sidebar.expand" data-i18n-aria="sidebar.expand" title="展开侧栏" aria-label="展开侧栏" hidden>▶</button>
 
   <!-- 所见即所得 -->
   <div id="wysiwyg-pane" class="editor-pane">
     <div id="rich-editor" contenteditable="true" spellcheck="false"
+      data-i18n-data-placeholder="editor.richPlaceholder"
       data-placeholder="开始写作…&#10;&#10;直接输入文字，选中后点击工具栏设置格式。&#10;点击上方标签可切换到源码（Markdown）模式。"></div>
   </div>
 
   <!-- Markdown 源码 -->
   <div id="md-pane" class="editor-pane" style="display:none">
     <textarea id="md-editor" spellcheck="false" autocomplete="off"
+      data-i18n-placeholder="editor.mdPlaceholder"
       placeholder="# 开始写作…&#10;&#10;支持完整 Markdown 语法"></textarea>
   </div>
 
@@ -233,17 +236,17 @@
 
 <!-- 状态栏 -->
 <div id="statusbar">
-  <span id="status-words">字数 0</span>
-  <span id="status-chars">字符 0</span>
-  <span id="status-lines">行 1</span>
+  <span id="status-words" data-i18n-skip>字数 0</span>
+  <span id="status-chars" data-i18n-skip>字符 0</span>
+  <span id="status-lines" data-i18n-skip>行 1</span>
   <div class="status-sep"></div>
   <div id="status-path-wrap" class="status-path-wrap" title="">
-    <span id="status-readonly-tag" class="status-readonly-tag" hidden>只读</span>
-    <span id="status-path" class="status-path">未保存文档</span>
-    <button type="button" class="status-copy-btn" id="btn-copy-doc-path" title="复制完整路径" disabled>复制路径</button>
+    <span id="status-readonly-tag" class="status-readonly-tag" hidden data-i18n-skip>只读</span>
+    <span id="status-path" class="status-path" data-i18n-skip>未保存文档</span>
+    <button type="button" class="status-copy-btn" id="btn-copy-doc-path" data-i18n="status.copyPath" data-i18n-title="status.copyPath" title="复制完整路径" disabled>复制路径</button>
   </div>
   <div class="status-right">
-    <span id="status-mode">可视化</span>
+    <span id="status-mode" data-i18n-skip>可视化</span>
     <span id="status-encoding">UTF-8</span>
     <span id="status-version" class="status-version"></span>
     <div id="music-status" style="display:none">
@@ -256,14 +259,14 @@
 <!-- 表格对话框 -->
 <div id="table-dialog" class="dialog" style="display:none">
   <div class="dialog-box">
-    <div class="dialog-title" id="table-dialog-title">插入表格</div>
+    <div class="dialog-title" id="table-dialog-title" data-i18n-skip>插入表格</div>
     <p class="dialog-hint" id="table-dialog-hint" style="display:none;margin:0 0 10px;font-size:12px;opacity:.72"></p>
-    <div class="dialog-row"><label id="table-rows-label">行数</label><input type="number" id="table-rows" value="3" min="1" max="20"></div>
-    <div class="dialog-row"><label id="table-cols-label">列数</label><input type="number" id="table-cols" value="3" min="1" max="10"></div>
-    <div class="dialog-row" id="table-header-row"><label>含表头</label><input type="checkbox" id="table-header" checked></div>
+    <div class="dialog-row"><label id="table-rows-label" data-i18n-skip>行数</label><input type="number" id="table-rows" value="3" min="1" max="20"></div>
+    <div class="dialog-row"><label id="table-cols-label" data-i18n-skip>列数</label><input type="number" id="table-cols" value="3" min="1" max="10"></div>
+    <div class="dialog-row" id="table-header-row"><label data-i18n="table.hasHeader">含表头</label><input type="checkbox" id="table-header" checked></div>
     <div class="dialog-btns">
-      <button id="table-cancel">取消</button>
-      <button id="table-ok" class="primary-btn">插入</button>
+      <button id="table-cancel" data-i18n="table.cancel">取消</button>
+      <button id="table-ok" class="primary-btn" data-i18n-skip>插入</button>
     </div>
   </div>
 </div>
@@ -271,12 +274,12 @@
 <!-- 链接对话框 -->
 <div id="link-dialog" class="dialog" style="display:none">
   <div class="dialog-box">
-    <div class="dialog-title">插入链接</div>
-    <div class="dialog-row"><label>文字</label><input type="text" id="link-text" placeholder="链接文字"></div>
-    <div class="dialog-row"><label>链接地址</label><input type="text" id="link-url" placeholder="https://"></div>
+    <div class="dialog-title" data-i18n="link.title">插入链接</div>
+    <div class="dialog-row"><label data-i18n="link.labelText">文字</label><input type="text" id="link-text" data-i18n-placeholder="link.textPh" placeholder="链接文字"></div>
+    <div class="dialog-row"><label data-i18n="link.labelUrl">链接地址</label><input type="text" id="link-url" data-i18n-placeholder="link.urlPh" placeholder="https://"></div>
     <div class="dialog-btns">
-      <button id="link-cancel">取消</button>
-      <button id="link-ok" class="primary-btn">插入</button>
+      <button id="link-cancel" data-i18n="link.cancel">取消</button>
+      <button id="link-ok" class="primary-btn" data-i18n="link.insert">插入</button>
     </div>
   </div>
 </div>
@@ -285,10 +288,10 @@
 <div id="prompt-dialog" class="dialog" style="display:none">
   <div class="dialog-box">
     <div class="dialog-title" id="prompt-dialog-title"></div>
-    <div class="dialog-row"><label id="prompt-dialog-label">名称</label><input type="text" id="prompt-dialog-input" autocomplete="off"></div>
+    <div class="dialog-row"><label id="prompt-dialog-label" data-i18n="prompt.name">名称</label><input type="text" id="prompt-dialog-input" autocomplete="off"></div>
     <div class="dialog-btns">
-      <button type="button" id="prompt-dialog-cancel">取消</button>
-      <button type="button" id="prompt-dialog-ok" class="primary-btn">确定</button>
+      <button type="button" id="prompt-dialog-cancel" data-i18n="dialog.cancel">取消</button>
+      <button type="button" id="prompt-dialog-ok" class="primary-btn" data-i18n="dialog.ok">确定</button>
     </div>
   </div>
 </div>
@@ -296,21 +299,21 @@
 <!-- 小红书导出：六种高级感配色 + 四种免费商用正文字体 -->
 <div id="xhs-style-dialog" class="dialog" style="display:none">
   <div class="dialog-box xhs-style-dialog-box">
-    <div class="dialog-title">导出风格与字体</div>
-    <p class="xhs-style-dialog-hint">选择配色、正文字体与<strong>导出图</strong>上的手机阅读字号（不改编辑器字号）。导出固定 2× 像素（约 2160 宽），短图智能分页不切半行。</p>
-    <div class="xhs-export-section-label">配色</div>
-    <div id="xhs-style-grid" class="xhs-style-grid" role="listbox" aria-label="导出风格"></div>
-    <div class="xhs-export-section-label xhs-export-section-label-mt">手机阅读字号（仅导出）</div>
-    <div id="xhs-readability-grid" class="xhs-readability-grid" role="listbox" aria-label="导出阅读字号"></div>
-    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">标准档约 34px 正文，适合小红书；舒适/加大适合长文。字号仅影响导出图，不改编辑器。</p>
-    <div class="xhs-export-section-label xhs-export-section-label-mt">分页方式</div>
-    <div id="xhs-pagination-grid" class="xhs-pagination-grid" role="listbox" aria-label="导出分页方式"></div>
-    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px">推荐「智能分页」：在段落边界自动切页，避免一行文字被切成两半。长图超高时自动续页。</p>
-    <div class="xhs-export-section-label">正文字体</div>
-    <div id="xhs-font-grid" class="xhs-font-grid" role="listbox" aria-label="导出字体"></div>
+    <div class="dialog-title" data-i18n="xhs.dialogTitle">导出风格与字体</div>
+    <p class="xhs-style-dialog-hint" data-i18n="xhs.dialogHint">选择配色、正文字体与导出图上的手机阅读字号（不改编辑器字号）。导出固定 2× 像素（约 2160 宽），短图智能分页不切半行。</p>
+    <div class="xhs-export-section-label" data-i18n="xhs.colors">配色</div>
+    <div id="xhs-style-grid" class="xhs-style-grid" role="listbox" data-i18n-aria="xhs.aria.style" aria-label="导出风格"></div>
+    <div class="xhs-export-section-label xhs-export-section-label-mt" data-i18n="xhs.readLabel">手机阅读字号（仅导出）</div>
+    <div id="xhs-readability-grid" class="xhs-readability-grid" role="listbox" data-i18n-aria="xhs.aria.readSize" aria-label="导出阅读字号"></div>
+    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px" data-i18n="xhs.readHint">标准档约 34px 正文，适合小红书；舒适/加大适合长文。字号仅影响导出图，不改编辑器。</p>
+    <div class="xhs-export-section-label xhs-export-section-label-mt" data-i18n="xhs.pageLabel">分页方式</div>
+    <div id="xhs-pagination-grid" class="xhs-pagination-grid" role="listbox" data-i18n-aria="xhs.aria.pagination" aria-label="导出分页方式"></div>
+    <p class="xhs-style-dialog-hint" style="margin-top:6px;margin-bottom:10px" data-i18n="xhs.pageHint">推荐「智能分页」：在段落边界自动切页，避免一行文字被切成两半。长图超高时自动续页。</p>
+    <div class="xhs-export-section-label" data-i18n="xhs.fontLabel">正文字体</div>
+    <div id="xhs-font-grid" class="xhs-font-grid" role="listbox" data-i18n-aria="xhs.aria.font" aria-label="导出字体"></div>
     <div class="dialog-btns">
-      <button type="button" id="xhs-style-cancel">取消</button>
-      <button type="button" id="xhs-style-ok" class="primary-btn">继续导出</button>
+      <button type="button" id="xhs-style-cancel" data-i18n="xhs.cancel">取消</button>
+      <button type="button" id="xhs-style-ok" class="primary-btn" data-i18n="xhs.continue">继续导出</button>
     </div>
   </div>
 </div>
@@ -319,54 +322,54 @@
 <div id="music-panel" class="side-panel" style="display:none">
   <div class="panel-header music-panel-header">
     <div class="music-panel-title-block">
-      <span class="music-panel-title">音效与音乐</span>
+      <span class="music-panel-title" data-i18n="music.title">音效与音乐</span>
       <p class="music-panel-subtitle">Audio &amp; Ambience</p>
     </div>
-    <button type="button" class="panel-close music-panel-close" id="music-panel-close" title="关闭">✕</button>
+    <button type="button" class="panel-close music-panel-close" id="music-panel-close" data-i18n-title="music.close" data-i18n-aria="music.close" title="关闭">✕</button>
   </div>
   <div class="panel-section music-panel-section">
     <div class="music-section-head">
-      <span class="panel-label music-lib-label">环境音</span>
+      <span class="panel-label music-lib-label" data-i18n="music.ambient">环境音</span>
       <span class="music-presets-tag">PRESETS</span>
     </div>
     <div class="noise-grid">
-      <button type="button" class="noise-btn" data-type="rain"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2c-.85 3.15-3.55 5.75-3.55 8.75a3.55 3.55 0 1 0 7.1 0c0-3-2.7-5.6-3.55-8.75z"/></svg></span><span class="noise-btn-label">雨声</span></button>
-      <button type="button" class="noise-btn" data-type="forest"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4 8 17h8L12 4zm-1 13h2v4h-2v-4z"/></svg></span><span class="noise-btn-label">森林</span></button>
-      <button type="button" class="noise-btn" data-type="ocean"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M2 14.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2v-1.5zm0-4.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2V10z"/></svg></span><span class="noise-btn-label">海浪</span></button>
-      <button type="button" class="noise-btn" data-type="wind"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg noise-ico-stroke" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4 9h10a2.5 2.5 0 1 0 0-1H4m0 4.5h14M4 18h8a2 2 0 1 1 0 1"/></svg></span><span class="noise-btn-label">城市</span></button>
-      <button type="button" class="noise-btn" data-type="fire"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c-1.25 3.6-4.1 4.6-4.1 8.2 0 2.3 1.3 4.2 3.2 5.1.45-1.05 1.9-3.1 1.9-5.1 0-3.6-2.85-4.6-4.1-8.2z"/></svg></span><span class="noise-btn-label">篝火</span></button>
-      <button type="button" class="noise-btn" data-type="cafe"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6 6h9v4.5A3.25 3.25 0 0 1 11.75 14h-2.5A3.25 3.25 0 0 1 6 10.5V6zm11 3.5h1.5a2 2 0 0 1 2 2v.4a2 2 0 0 1-2 2H17V9.5zM8 17.25h6v1.5H8v-1.5z"/></svg></span><span class="noise-btn-label">咖啡馆</span></button>
+      <button type="button" class="noise-btn" data-type="rain"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2c-.85 3.15-3.55 5.75-3.55 8.75a3.55 3.55 0 1 0 7.1 0c0-3-2.7-5.6-3.55-8.75z"/></svg></span><span class="noise-btn-label" data-i18n="noise.rain">雨声</span></button>
+      <button type="button" class="noise-btn" data-type="forest"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4 8 17h8L12 4zm-1 13h2v4h-2v-4z"/></svg></span><span class="noise-btn-label" data-i18n="noise.forest">森林</span></button>
+      <button type="button" class="noise-btn" data-type="ocean"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M2 14.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2v-1.5zm0-4.5c1.6-1 2.7-1 4.3 0s2.7 1 4.3 0 2.7-1 4.2 0 2.7 1 4.2 0 2.7-1 4.3 0v1.5H2V10z"/></svg></span><span class="noise-btn-label" data-i18n="noise.ocean">海浪</span></button>
+      <button type="button" class="noise-btn" data-type="wind"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg noise-ico-stroke" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4 9h10a2.5 2.5 0 1 0 0-1H4m0 4.5h14M4 18h8a2 2 0 1 1 0 1"/></svg></span><span class="noise-btn-label" data-i18n="noise.wind">城市</span></button>
+      <button type="button" class="noise-btn" data-type="fire"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2c-1.25 3.6-4.1 4.6-4.1 8.2 0 2.3 1.3 4.2 3.2 5.1.45-1.05 1.9-3.1 1.9-5.1 0-3.6-2.85-4.6-4.1-8.2z"/></svg></span><span class="noise-btn-label" data-i18n="noise.fire">篝火</span></button>
+      <button type="button" class="noise-btn" data-type="cafe"><span class="noise-btn-ico" aria-hidden="true"><svg class="noise-ico-svg" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6 6h9v4.5A3.25 3.25 0 0 1 11.75 14h-2.5A3.25 3.25 0 0 1 6 10.5V6zm11 3.5h1.5a2 2 0 0 1 2 2v.4a2 2 0 0 1-2 2H17V9.5zM8 17.25h6v1.5H8v-1.5z"/></svg></span><span class="noise-btn-label" data-i18n="noise.cafe">咖啡馆</span></button>
     </div>
-    <button type="button" id="btn-stop-noise" class="stop-btn music-stop-btn" style="display:none">停止环境音</button>
+    <button type="button" id="btn-stop-noise" class="stop-btn music-stop-btn" style="display:none" data-i18n="noise.stop">停止环境音</button>
   </div>
   <div class="panel-section music-panel-section">
-    <span class="panel-label music-source-label">自定义音频源</span>
+    <span class="panel-label music-source-label" data-i18n="music.custom">自定义音频源</span>
     <div class="music-source-card">
-      <span id="music-folder-display" class="music-folder-path">未选择目录</span>
-      <button type="button" id="btn-pick-music-folder" class="music-browse-btn">浏览</button>
+      <span id="music-folder-display" class="music-folder-path" data-i18n-skip>未选择目录</span>
+      <button type="button" id="btn-pick-music-folder" class="music-browse-btn" data-i18n="music.browse">浏览</button>
     </div>
     <div id="music-list"></div>
-    <span class="panel-label music-mode-label">播放模式</span>
+    <span class="panel-label music-mode-label" data-i18n="music.playMode">播放模式</span>
     <div class="play-mode-row">
-      <button type="button" class="mode-btn active" data-mode="order" title="按列表顺序依次播放">顺序</button>
-      <button type="button" class="mode-btn" data-mode="shuffle" title="随机挑选下一首">随机</button>
-      <button type="button" class="mode-btn" data-mode="loop" title="单曲循环当前曲目">循环</button>
+      <button type="button" class="mode-btn active" data-mode="order" data-i18n="music.order" data-i18n-title="music.orderTip" title="按列表顺序依次播放">顺序</button>
+      <button type="button" class="mode-btn" data-mode="shuffle" data-i18n="music.shuffle" data-i18n-title="music.shuffleTip" title="随机挑选下一首">随机</button>
+      <button type="button" class="mode-btn" data-mode="loop" data-i18n="music.loop" data-i18n-title="music.loopTip" title="单曲循环当前曲目">循环</button>
     </div>
   </div>
   <div class="panel-section music-panel-bottom">
     <div class="music-volume-block">
       <div class="music-volume-head">
-        <span class="music-volume-title"><span class="music-volume-accent">音量</span> <span id="volume-display">60%</span></span>
+        <span class="music-volume-title"><span class="music-volume-accent" data-i18n="music.volume">音量</span> <span id="volume-display">60%</span></span>
       </div>
       <input type="range" id="volume-slider" min="0" max="100" value="60" step="1">
     </div>
     <div class="music-playback-row">
       <div class="music-transport">
-        <button type="button" class="music-nav-btn" id="btn-prev-track" title="上一曲" aria-label="上一曲">
+        <button type="button" class="music-nav-btn" id="btn-prev-track" data-i18n-title="music.prev" data-i18n-aria="music.prev" title="上一曲" aria-label="上一曲">
           <svg class="music-nav-ico music-nav-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 5h2v14H6V5zm9 2L7 12l8 5V7z"/></svg>
         </button>
-        <button type="button" id="btn-play-pause" class="play-btn" title="播放 / 暂停" aria-label="播放或暂停">▶</button>
-        <button type="button" class="music-nav-btn" id="btn-next-track" title="下一曲" aria-label="下一曲">
+        <button type="button" id="btn-play-pause" class="play-btn" data-i18n-title="music.playPause" data-i18n-aria="music.playPause" title="播放 / 暂停" aria-label="播放或暂停">▶</button>
+        <button type="button" class="music-nav-btn" id="btn-next-track" data-i18n-title="music.next" data-i18n-aria="music.next" title="下一曲" aria-label="下一曲">
           <svg class="music-nav-ico music-nav-ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7l8 5-8 5V7zM17 5h2v14h-2V5z"/></svg>
         </button>
       </div>
@@ -379,67 +382,91 @@
 
 <!-- 设置面板 -->
 <div id="settings-panel" class="side-panel" style="display:none">
-  <div class="panel-header"><span>⚙ 设置</span><button type="button" class="panel-close" id="settings-panel-close" title="关闭">✕</button></div>
+  <div class="panel-header"><span data-i18n="settings.header">⚙ 设置</span><button type="button" class="panel-close" id="settings-panel-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="关闭">✕</button></div>
   <div class="panel-section">
-    <div class="panel-label">字体大小 <span id="font-size-display">15px</span></div>
+    <div class="panel-label"><span data-i18n="settings.fontSize">字体大小</span> <span id="font-size-display">15px</span></div>
     <input type="range" id="font-size-slider" min="12" max="24" value="15" step="1">
   </div>
   <div class="panel-section">
-    <div class="panel-label">行高 <span id="line-height-display">1.8</span></div>
+    <div class="panel-label"><span data-i18n="settings.lineHeight">行高</span> <span id="line-height-display">1.8</span></div>
     <input type="range" id="line-height-slider" min="14" max="28" value="18" step="1">
   </div>
   <div class="panel-section">
-    <div class="panel-label">字体</div>
+    <div class="panel-label" data-i18n="settings.fontFamily">字体</div>
     <select id="font-family-select">
-      <option value="system">系统默认（微软雅黑）</option>
-      <option value="sourcehan">思源黑体</option>
-      <option value="songti">宋体</option>
-      <option value="kaiti">楷体</option>
-      <option value="mono">等宽字体</option>
+      <option value="system" data-i18n="settings.font.system">系统默认（微软雅黑）</option>
+      <option value="sourcehan" data-i18n="settings.font.sourcehan">思源黑体</option>
+      <option value="songti" data-i18n="settings.font.songti">宋体</option>
+      <option value="kaiti" data-i18n="settings.font.kaiti">楷体</option>
+      <option value="mono" data-i18n="settings.font.mono">等宽字体</option>
     </select>
   </div>
   <div class="panel-section">
-    <div class="panel-label">工作区根目录</div>
-    <button type="button" class="action-btn" id="btn-settings-workspace" style="width:100%;margin-top:4px">选择文件夹…</button>
-    <div id="settings-workspace-display" class="settings-path-hint"></div>
+    <div class="panel-label" data-i18n="settings.workspaceRoot">工作区根目录</div>
+    <button type="button" class="action-btn" id="btn-settings-workspace" style="width:100%;margin-top:4px" data-i18n="settings.pickFolder">选择文件夹…</button>
+    <div id="settings-workspace-display" class="settings-path-hint" data-i18n-skip></div>
   </div>
   <div class="panel-section">
     <label class="toggle-label">
       <input type="checkbox" id="word-wrap-toggle" checked>
-      <span class="toggle-track"></span>自动换行
+      <span class="toggle-track"></span><span data-i18n="settings.wordWrap">自动换行</span>
     </label>
   </div>
   <div class="panel-section">
     <label class="toggle-label">
       <input type="checkbox" id="preview-justify-toggle">
-      <span class="toggle-track"></span>预览两端对齐
+      <span class="toggle-track"></span><span data-i18n="settings.previewJustify">预览两端对齐</span>
     </label>
   </div>
   <div class="panel-section" id="glass-settings" style="display:none">
-    <div class="panel-label">毛玻璃背景图片</div>
+    <div class="panel-label" data-i18n="settings.bgImage">毛玻璃背景图片</div>
     <div class="bg-btns">
-      <button type="button" id="btn-pick-bg">选择背景图</button>
-      <button type="button" id="btn-clear-bg">清除背景</button>
+      <button type="button" id="btn-pick-bg" data-i18n="settings.pickBg">选择背景图</button>
+      <button type="button" id="btn-clear-bg" data-i18n="settings.clearBg">清除背景</button>
     </div>
     <div id="bg-path-display"></div>
-    <div class="panel-label" style="margin-top:12px">模糊度（有背景图时） <span id="blur-display">28px</span></div>
-    <input type="range" id="blur-slider" min="4" max="48" value="28" step="1" title="仅在选择背景图后对壁纸模糊生效">
-    <div class="panel-label" style="margin-top:12px">遮罩强度（有背景图时） <span id="overlay-display">3%</span></div>
-    <input type="range" id="overlay-slider" min="0" max="60" value="2" step="1" title="仅在选择背景图后叠在壁纸上，数值越大越朦胧">
-    <div class="panel-label" style="margin-top:12px">壁纸与文字对比</div>
-    <select id="glass-text-contrast-select" title="自动会按背景图明暗切换文字颜色；也可手动指定">
-      <option value="auto">自动（按背景图）</option>
-      <option value="dark_on_wp">浅色毛玻璃</option>
-      <option value="light_on_wp">深色毛玻璃</option>
+    <div class="panel-label" style="margin-top:12px"><span data-i18n="settings.blur">模糊度（有背景图时）</span> <span id="blur-display">28px</span></div>
+    <input type="range" id="blur-slider" min="4" max="48" value="28" step="1" data-i18n-title="settings.blurTip" title="仅在选择背景图后对壁纸模糊生效">
+    <div class="panel-label" style="margin-top:12px"><span data-i18n="settings.overlay">遮罩强度（有背景图时）</span> <span id="overlay-display">3%</span></div>
+    <input type="range" id="overlay-slider" min="0" max="60" value="2" step="1" data-i18n-title="settings.overlayTip" title="仅在选择背景图后叠在壁纸上，数值越大越朦胧">
+    <div class="panel-label" style="margin-top:12px" data-i18n="settings.glassContrast">壁纸与文字对比</div>
+    <select id="glass-text-contrast-select" data-i18n-title="settings.glass.hint" title="自动会按背景图明暗切换文字颜色；也可手动指定">
+      <option value="auto" data-i18n="settings.glass.auto">自动（按背景图）</option>
+      <option value="dark_on_wp" data-i18n="settings.glass.lightGlass">浅色毛玻璃</option>
+      <option value="light_on_wp" data-i18n="settings.glass.darkGlass">深色毛玻璃</option>
     </select>
   </div>
-  <div class="panel-section app-version-hint">版本 <span id="app-version-display">—</span></div>
+  <div class="panel-section" id="locale-settings">
+    <div class="panel-label" data-i18n="settings.language">语言</div>
+    <select id="locale-select">
+      <option value="zh">中文</option>
+      <option value="en">English</option>
+    </select>
+  </div>
+  <div class="panel-section" id="store-settings">
+    <div class="panel-label" data-i18n="settings.store">购买渠道</div>
+    <div class="store-choices">
+      <button type="button" class="store-choice" id="store-cn">国内 · ¥58 · 微信 / 支付宝</button>
+      <button type="button" class="store-choice" id="store-intl">国际 · $8.80 · 银行卡</button>
+    </div>
+  </div>
+  <div class="panel-section" id="license-settings">
+    <div class="panel-label" data-i18n="settings.license">授权</div>
+    <div id="license-status" class="settings-path-hint"></div>
+    <textarea id="license-input" class="license-input" rows="3" data-i18n-placeholder="license.placeholder" placeholder="粘贴整行授权码" spellcheck="false"></textarea>
+    <div class="bg-btns" style="margin-top:8px">
+      <button type="button" id="btn-license-activate" data-i18n="license.activate">激活</button>
+      <button type="button" id="btn-license-buy" data-i18n="license.buy">购买</button>
+    </div>
+    <button type="button" id="btn-eula" class="eula-link" data-i18n="eula.open">查看完整条款</button>
+  </div>
+  <div class="panel-section app-version-hint"><span data-i18n="settings.version">版本</span> <span id="app-version-display">—</span></div>
 </div>
 
 <div id="xhs-export-progress" class="dialog xhs-export-progress-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="xhs-export-progress-title">
   <div class="dialog-box xhs-export-progress-box">
-    <div class="dialog-title" id="xhs-export-progress-title">正在导出图片</div>
-    <p id="xhs-export-progress-label" class="xhs-export-progress-label">准备中…</p>
+    <div class="dialog-title" id="xhs-export-progress-title" data-i18n="xhs.progressTitle">正在导出图片</div>
+    <p id="xhs-export-progress-label" class="xhs-export-progress-label" data-i18n="xhs.preparing">准备中…</p>
     <div class="xhs-export-progress-track" aria-hidden="true">
       <div id="xhs-export-progress-bar" class="xhs-export-progress-bar"></div>
     </div>
@@ -455,8 +482,10 @@
 <div id="ctx-menu" class="ctx-menu" style="display:none" role="menu" aria-hidden="true"></div>
 <div id="ctx-submenu" class="ctx-menu ctx-submenu" style="display:none" role="menu" aria-hidden="true"></div>
 
-<script src="../../node_modules/html2canvas/dist/html2canvas.min.js"></script>
+<script src="i18n-dom.js"></script>
+<script src="bootstrap-i18n.js"></script>
 <script src="app.js"></script>
 <script src="context-menu.js"></script>
+<script src="../../node_modules/html2canvas/dist/html2canvas.min.js" defer></script>
 </body>
 </html>
