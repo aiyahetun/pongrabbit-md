@@ -1,4 +1,8 @@
 {
-  "cn": { "url": "", "price": "¥58", "currency": "CNY" },
+  "cn": {
+    "url": "https://afdian.com/item/39c093e0b99411f1a74852540025c377",
+    "price": "¥58",
+    "currency": "CNY"
+  },
   "intl": { "url": "", "price": "$8.80", "currency": "USD" }
 }

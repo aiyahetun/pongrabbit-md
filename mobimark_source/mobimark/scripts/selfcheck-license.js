@@ -81,7 +81,8 @@ try {
   const stores = require('../src/shared/stores.json')
   check('国内标价 58', stores.cn.price === '¥58')
   check('海外标价 8.8 美元', stores.intl.price === '$8.80')
-  check('商店地址默认为空', stores.cn.url === '' && stores.intl.url === '')
+  check('国内店链接已配置', /^https:\/\/afdian\.com\/item\//.test(stores.cn.url))
+  check('海外店链接未配置或合法', stores.intl.url === '' || /^https:\/\//.test(stores.intl.url))
 } finally {
   license.setStateDirForTests(null)
   fs.rmSync(dir, { recursive: true, force: true })
