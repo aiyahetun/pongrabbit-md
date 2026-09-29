@@ -45,7 +45,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobimark_source/mobimark/package-lock.json
       - run: npm ci
-      - run: npm run build-mac
+      # macos-latest 为 Apple Silicon；仅 build-mac 会产出 arm64，Intel Mac 无法打开
+      - run: npm run build-mac-universal
       - uses: actions/upload-artifact@v4
         with:
           name: macos
