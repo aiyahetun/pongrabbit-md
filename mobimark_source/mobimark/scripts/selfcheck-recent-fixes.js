@@ -48,9 +48,9 @@ check('logic: readonly -> markdown', defaultModeForOpen(true) === 'markdown')
 // ── 2. 保存只弹一个对话框 ──────────────────────────────────
 console.log('\n[2] Save dialog dedup')
 check('_saveInFlight declared', appSrc.includes('let _saveInFlight = false'))
-check('saveFile uses in-flight guard', /async function saveFile\(\)[\s\S]*?if \(_saveInFlight\) return/.test(appSrc))
+check('saveFile uses in-flight guard', /async function saveFile\([^)]*\)[\s\S]*?if \(_saveInFlight\) return/.test(appSrc))
 check('saveFileAs uses in-flight guard', /async function saveFileAs\(\)[\s\S]*?if \(_saveInFlight\) return/.test(appSrc))
-check('saveFile finally clears guard', /async function saveFile\(\)[\s\S]*?finally \{[\s\S]*?_saveInFlight = false/.test(appSrc))
+check('saveFile finally clears guard', /async function saveFile\([^)]*\)[\s\S]*?finally \{[\s\S]*?_saveInFlight = false/.test(appSrc))
 check('rich editor Ctrl+S stopPropagation', /richEditor\.addEventListener\('keydown'[\s\S]*?case 's':e\.preventDefault\(\);e\.stopPropagation\(\)/.test(appSrc))
 check('md editor Ctrl+S stopPropagation', /mdEditor\.addEventListener\('keydown'[\s\S]*?case 's':e\.preventDefault\(\);e\.stopPropagation\(\)/.test(appSrc))
 check('main save-file IPC intact', mainSrc.includes("ipcMain.handle('save-file'"))
@@ -159,8 +159,17 @@ check('dispatchShellOpenFile', /function dispatchShellOpenFile/.test(mainSrc))
 check('shell-open-file IPC', /shell-open-file/.test(mainSrc) && /onShellOpenFile/.test(preloadSrc))
 check('renderer shell listener', /setupShellOpenFileListener/.test(appSrc))
 
+// ── 5. 自动保存 / 关闭未保存提示 ─────────────────────────────
+console.log('\n[5] Auto-save & close guard')
+check('auto-save timer setup', appSrc.includes('function setupAutoSave') && appSrc.includes('autoSaveTick'))
+check('silent save skips sidebar refresh', /if \(!silent\) \{[\s\S]*?loadRecentFiles[\s\S]*?refreshWorkspaceTree/.test(appSrc))
+check('close uses allowClose IPC', mainSrc.includes("ipcMain.on('win-close-allow'") && mainSrc.includes('allowClose'))
+check('close prevented until renderer confirms', /win\.on\('close'[\s\S]*?win-close-request/.test(mainSrc))
+check('renderer requestWindowClose', appSrc.includes('function requestWindowClose'))
+check('default auto-save interval 120s', /autoSaveIntervalSec:\s*120/.test(mainSrc))
+
 // ── 语法检查 ───────────────────────────────────────────────
-console.log('\n[5] Syntax check')
+console.log('\n[6] Syntax check')
 function syntaxOk (file) {
   try {
     require('node:module').createRequire(file)(file)

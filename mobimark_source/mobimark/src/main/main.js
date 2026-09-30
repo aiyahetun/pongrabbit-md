@@ -196,6 +196,10 @@ function defaultConfig () {
     sidebarTab: 'outline',
     /** 预览区两端对齐 */
     previewJustify: false,
+    /** 定时自动保存（已有路径写盘；未命名文稿写入 pendingContent 防丢） */
+    autoSaveEnabled: true,
+    /** 与常见桌面写作工具「数分钟级」备份接近（Word 自动恢复默认约 10 分钟；Obsidian 等更偏实时写盘） */
+    autoSaveIntervalSec: 120,
     /** 小红书短图/长图导出配色风格 id */
     xhsExportStyle: 'slate-blue-frost',
     /** 导出正文字体：noto-serif-sc | noto-sans-sc | smiley-sans | ibm-plex */
@@ -236,6 +240,66 @@ function ensureLocaleStore () {
 
 function menuLabel (key) {
   return t(config.locale || 'zh', key)
+}
+
+function dialogLocale () {
+  return config.locale === 'en' ? 'en' : 'zh'
+}
+
+/** 保存 / 不保存 / 取消；response 0=保存 1=不保存 2=取消 */
+async function confirmUnsavedChanges (win) {
+  const loc = dialogLocale()
+  return dialog.showMessageBox(win, {
+    type: 'question',
+    buttons: [t(loc, 'dialog.save'), t(loc, 'dialog.dontSave'), t(loc, 'dialog.cancel')],
+    defaultId: 0,
+    cancelId: 2,
+    message: t(loc, 'dialog.unsavedChanges')
+  })
+}
+
+const SNAP_EDGE_THRESHOLD = 22
+const SNAP_SETTLE_MS = 120
+
+function snapWindowToWorkAreaHalf (win, side) {
+  if (!win || win.isDestroyed()) return
+  const st = getState(win)
+  const b = win.getBounds()
+  const display = screen.getDisplayMatching(b)
+  const area = display.workArea
+  const halfW = Math.floor(area.width / 2)
+  const target = side === 'left'
+    ? { x: area.x, y: area.y, width: halfW, height: area.height }
+    : { x: area.x + halfW, y: area.y, width: area.width - halfW, height: area.height }
+  if (st) {
+    st.snapApplying = true
+    st.winCustomMaximized = false
+    st.winRestoreBounds = { ...target }
+  }
+  win.setBounds(target)
+  if (st) setImmediate(() => { st.snapApplying = false })
+  sendWinState(win)
+}
+
+function setupWindowEdgeSnap (win) {
+  if (!win || win.isDestroyed()) return
+  let settleTimer = null
+  const trySnap = () => {
+    const st = getState(win)
+    if (!st || st.snapApplying || win.isDestroyed()) return
+    if (process.platform === 'win32' && st.winCustomMaximized) return
+    if (process.platform !== 'win32' && win.isMaximized()) return
+    const b = win.getBounds()
+    const area = screen.getDisplayMatching(b).workArea
+    const nearLeft = Math.abs(b.x - area.x) <= SNAP_EDGE_THRESHOLD
+    const nearRight = Math.abs((b.x + b.width) - (area.x + area.width)) <= SNAP_EDGE_THRESHOLD
+    if (nearLeft) snapWindowToWorkAreaHalf(win, 'left')
+    else if (nearRight) snapWindowToWorkAreaHalf(win, 'right')
+  }
+  win.on('moved', () => {
+    clearTimeout(settleTimer)
+    settleTimer = setTimeout(trySnap, SNAP_SETTLE_MS)
+  })
 }
 
 function saveConfigDisk (partial) {
@@ -492,6 +556,8 @@ function createWindow (initialFilePath = null) {
     minWidth: 800,
     minHeight: 550,
     frame: false,
+    /* Win 无边框透明窗默认难触发系统贴边半屏；保留厚边框样式以参与 Aero Snap */
+    thickFrame: process.platform === 'win32',
     /* 与 npm start 一致：Mac/Win 均用透明窗口，由 syncGlassWindowBackground 按主题再设底色 */
     transparent: true,
     /* transparent 时 Electron 默认 hasShadow=false，窗口贴桌面时缺少轮廓；显式打开系统阴影 */
@@ -518,7 +584,9 @@ function createWindow (initialFilePath = null) {
     initialPath: initialFilePath ? path.resolve(initialFilePath) : null,
     documentPath: null,
     winCustomMaximized: false,
-    winRestoreBounds: null
+    winRestoreBounds: null,
+    allowClose: false,
+    snapApplying: false
   }
   windowStates.set(win.webContents.id, state)
   try {
@@ -600,7 +668,15 @@ function createWindow (initialFilePath = null) {
     sendWinState(win)
   })
   const wcId = win.webContents.id
+  win.on('close', (e) => {
+    const st = getState(win)
+    if (st && !st.allowClose) {
+      e.preventDefault()
+      try { win.webContents.send('win-close-request') } catch (_) {}
+    }
+  })
   win.on('closed', () => { unregisterWindowById(wcId) })
+  setupWindowEdgeSnap(win)
   const th = config.theme || 'light'
   syncMacVibrancy(th, win)
   syncWinGlassMaterial(th, win)
@@ -762,7 +838,18 @@ ipcMain.handle('win-get-state', (event) => {
   if (process.platform === 'win32') return st && st.winCustomMaximized ? 'maximized' : 'normal'
   return win.isMaximized() ? 'maximized' : 'normal'
 })
-ipcMain.on('win-close', (event) => { getWinFromEvent(event)?.close() })
+ipcMain.on('win-close', (event) => {
+  const win = getWinFromEvent(event)
+  if (!win || win.isDestroyed()) return
+  try { win.webContents.send('win-close-request') } catch (_) {}
+})
+ipcMain.on('win-close-allow', (event) => {
+  const win = getWinFromEvent(event)
+  if (!win || win.isDestroyed()) return
+  const st = getState(win)
+  if (st) st.allowClose = true
+  win.close()
+})
 ipcMain.on('show-in-folder', (_, p) => {
   if (!p) return
   try {
@@ -918,24 +1005,19 @@ ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-o
   if (denied) return denied
   const win = getWinFromEvent(event)
   if (hasChanges) {
-    const r = await dialog.showMessageBox(win, {
-      type: 'question',
-      buttons: ['保存', '不保存', '取消'],
-      defaultId: 0,
-      cancelId: 2,
-      message: '是否保存对当前文档的更改？'
-    })
+    const r = await confirmUnsavedChanges(win)
     if (r.response === 2) return { action: 'cancel' }
     if (r.response === 0) return { action: 'save' }
   }
   if (promptTarget !== 'new-document') return { action: 'discard' }
+  const loc = dialogLocale()
   const r2 = await dialog.showMessageBox(win, {
     type: 'question',
-    buttons: ['新窗口', '当前窗口', '取消'],
+    buttons: [t(loc, 'dialog.newWindow'), t(loc, 'dialog.currentWindow'), t(loc, 'dialog.cancel')],
     defaultId: 0,
     cancelId: 2,
-    message: '新建文档',
-    detail: '是否在新窗口中打开空白文档？'
+    message: t(loc, 'dialog.newDocument'),
+    detail: t(loc, 'dialog.newDocumentDetail')
   })
   if (r2.response === 2) return { action: 'cancel' }
   if (r2.response === 0) {

@@ -95,6 +95,11 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   winMaximize: () => ipcRenderer.send('win-maximize'),
   winGetState: () => ipcRenderer.invoke('win-get-state'),
   winClose: () => ipcRenderer.send('win-close'),
+  winCloseAllow: () => ipcRenderer.send('win-close-allow'),
+  onWinCloseRequest: (cb) => {
+    if (typeof cb !== 'function') return
+    ipcRenderer.on('win-close-request', () => cb())
+  },
   onWinState: (cb) => ipcRenderer.on('win-state', (_, s) => cb(s)),
   openFileByPath: (p) => ipcRenderer.invoke('open-file-by-path', p),
   consumeInitialFile: () => ipcRenderer.invoke('consume-initial-file'),

@@ -79,6 +79,9 @@ let musicTracks=[],musicIdx=0,musicAudio=null,musicNext=null
 let musicPlaying=false,playMode='order',musicVolume=0.6
 let treeExpanded=new Set()
 let treeContextDir=''
+let _autoSaveTimer=null
+let _autoSaveStatusTimer=null
+let _closeInFlight=false
 /** 最近一次成功加载的壁纸 data URL，供「自动对比」切换选项时重新估算 */
 let lastBgDataUrl = null
 
@@ -185,6 +188,10 @@ async function init() {
   setupKeyboard()
   setupContextMenu()
   setupMenu()
+  setupAutoSave()
+  if (window.mobiAPI.onWinCloseRequest) {
+    window.mobiAPI.onWinCloseRequest(() => { void requestWindowClose() })
+  }
   await syncWorkspaceHint()
   await refreshLicenseUi()
   await refreshWorkspaceTree()
@@ -543,6 +550,8 @@ function syncUI(c){
   $('line-height-display').textContent=(c.lineHeight||1.8)
   $('font-family-select').value=c.fontFamily||'system'
   $('word-wrap-toggle').checked=c.wordWrap!==false
+  const ast = $('auto-save-toggle')
+  if (ast) ast.checked = c.autoSaveEnabled !== false
   const pjt=$('preview-justify-toggle')
   if(pjt)pjt.checked=!!c.previewJustify
   $('blur-slider').value=c.glassBlur ?? 28
@@ -1488,7 +1497,7 @@ function setupTopActions(){
   $('btn-theme-glass').onclick=()=>setTheme('glass')
   $('btn-minimize').onclick=()=>window.mobiAPI.winMinimize()
   $('btn-maximize').onclick=()=>window.mobiAPI.winMaximize()
-  $('btn-close').onclick=()=>window.mobiAPI.winClose()
+  $('btn-close').onclick=()=>{ void requestWindowClose() }
 }
 
 function setupStatusBar () {
@@ -1559,33 +1568,99 @@ async function openFile(){
 }
 let _saveInFlight = false
 
-async function saveFile(){
-  if (_saveInFlight) return
+async function saveFile(opts = {}){
+  const silent = !!(opts && opts.silent)
+  if (_saveInFlight) return false
   if (licenseLocked) {
-    alert(licenseLockedMessage(licenseStatusCache))
-    return
+    if (!silent) alert(licenseLockedMessage(licenseStatusCache))
+    return false
   }
   if(readOnlyDoc){
-    alert(errText('readonly-hint'))
-    return
+    if (!silent) alert(errText('readonly-hint'))
+    return false
   }
   _saveInFlight = true
   try {
     const r=await window.mobiAPI.saveFile({filePath:currentFile,content:getCurrentMd()})
     if(r&&r.error){
-      alert(r.error==='read-only-doc'?errText('read-only-doc'):errText(r.error))
-      return
+      if (!silent) alert(r.error==='read-only-doc'?errText('read-only-doc'):errText(r.error))
+      return false
     }
     if(r&&!r.error){
       currentFile=r;setModified(false);setTitle(bn(r))
       _pristineMd=getCurrentMd()
       _mdEdited=false
       _wysiwygEdited=false
-      await loadRecentFiles();await refreshWorkspaceTree()
+      if (!silent) {
+        await loadRecentFiles()
+        await refreshWorkspaceTree()
+      }
+      return true
     }
+    return false
   } finally {
     _saveInFlight = false
   }
+}
+
+async function confirmDiscardOrSaveChanges () {
+  const resp = await window.mobiAPI.newFile({ hasChanges: true, promptTarget: 'discard-only' })
+  if (resp.action === 'cancel') return false
+  if (resp.action === 'save') {
+    await saveFile()
+    if (isModified) return false
+  }
+  return true
+}
+
+async function requestWindowClose () {
+  if (_closeInFlight) return
+  _closeInFlight = true
+  try {
+    if (isModified && !editsBlocked()) {
+      const ok = await confirmDiscardOrSaveChanges()
+      if (!ok) return
+    }
+    if (window.mobiAPI.winCloseAllow) window.mobiAPI.winCloseAllow()
+    else window.mobiAPI.winClose()
+  } finally {
+    _closeInFlight = false
+  }
+}
+
+function flashAutoSavedStatus () {
+  const pathEl = $('status-path')
+  if (!pathEl) return
+  pathEl.textContent = tt('status.autoSaved')
+  clearTimeout(_autoSaveStatusTimer)
+  _autoSaveStatusTimer = setTimeout(() => { updateStatus() }, 1800)
+}
+
+async function autoSaveTick () {
+  if (cfg.autoSaveEnabled === false) return
+  if (!isModified || editsBlocked() || readOnlyDoc || _saveInFlight || _documentLoading) return
+  if (currentFile) {
+    const ok = await saveFile({ silent: true })
+    if (ok) flashAutoSavedStatus()
+    return
+  }
+  const md = getCurrentMd()
+  if (!md.trim()) return
+  try {
+    await window.mobiAPI.saveConfig({ pendingContent: md })
+  } catch (_) {}
+}
+
+function setupAutoSave () {
+  const restart = () => {
+    if (_autoSaveTimer) clearInterval(_autoSaveTimer)
+    _autoSaveTimer = null
+    if (cfg.autoSaveEnabled === false) return
+    const sec = Math.max(30, Number(cfg.autoSaveIntervalSec) || 120)
+    _autoSaveTimer = setInterval(() => { void autoSaveTick() }, sec * 1000)
+  }
+  restart()
+  cfg._restartAutoSave = restart
 }
 async function saveFileAs(){
   if (_saveInFlight) return
@@ -5994,6 +6069,15 @@ function setupSettingsPanel(){
   $('line-height-slider').oninput=function(){const v=+this.value/10;richEditor.style.lineHeight=mdEditor.style.lineHeight=v;$('line-height-display').textContent=v.toFixed(1);save_cfg({lineHeight:v})}
   $('font-family-select').onchange=function(){setFont(this.value);save_cfg({fontFamily:this.value})}
   $('word-wrap-toggle').onchange=function(){body.classList.toggle('no-wrap',!this.checked);save_cfg({wordWrap:this.checked})}
+  const ast = $('auto-save-toggle')
+  if (ast) {
+    ast.onchange = function () {
+      const on = !!this.checked
+      cfg.autoSaveEnabled = on
+      void save_cfg({ autoSaveEnabled: on })
+      if (cfg._restartAutoSave) cfg._restartAutoSave()
+    }
+  }
   $('btn-pick-bg').onclick=async()=>{
     const p=await window.mobiAPI.pickBgImage()
     if(!p)return

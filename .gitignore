@@ -24,3 +24,6 @@ Thumbs.db
 # 本地环境
 .env
 .env.*
+
+# 授权私钥，只留在签发用的电脑上
+mobimark_source/mobimark/license-keys/
