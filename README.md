@@ -2,18 +2,18 @@
 
 **把灵感写成作品——会呼吸的 Markdown 桌面创作空间。**
 
-[![最新版本](https://img.shields.io/badge/最新-v1.0.29-5b8def?style=flat-square)](CHANGELOG.md)
+[![最新版本](https://img.shields.io/badge/最新-v1.0.34-5b8def?style=flat-square)](CHANGELOG.md)
 [![多窗口](https://img.shields.io/badge/新功能-多窗口打开-7c9cff?style=flat-square)](docs/MULTI_WINDOW_PRD.md)
 
 pongrabbit-MD 不只是编辑器，更是一张**沉浸式写作桌**：多模式编辑、通透毛玻璃、环境音效与工作区管理融于一体。专为中文写作者打磨界面与节奏，在 **Windows** 与 **macOS** 上共享同一套精致体验，又各自贴合系统原生窗口与磨砂质感。
 
-### 最新 · v1.0.29 写得顺、链得开
+### 最新 · v1.0.34 表格稳、切换快
 
-- **模式切换更跟手**：可视化 / 源码 / 预览之间切换不再明显卡顿。
-- **超链能点了**：文内本地路径与外链均可正常打开。
-- **Windows 关联打开**（v1.0.28）：资源管理器双击 `.md` 可靠唤起应用。
+- **表格往返**：可视化填表后切换源码再回可视化，内容不再错行重复。
+- **切换与撤销**：长文模式切换、Ctrl+Z 撤销不再长时间卡顿。
+- **字数统计**：状态栏字数 / 字符规则与常见写作软件一致。
 
-[查看完整更新日志 →](CHANGELOG.md) · [本版发布说明 →](docs/RELEASE_NOTES_v1.0.29.md)
+[查看完整更新日志 →](CHANGELOG.md) · [本版发布说明 →](docs/RELEASE_NOTES_v1.0.34.md)
 
 ---
 

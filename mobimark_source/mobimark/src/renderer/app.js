@@ -120,6 +120,15 @@ function currentStoreRow () {
 function tableCellText () { return tt('table.cell') }
 function tableColText (n) { return tt('table.col', { n }) }
 
+/** 表格单元格 → GFM 行内文本（换行会破坏表格行，须压成空格） */
+function tableCellMdText (cell) {
+  return String(cell.innerText || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n+/g, ' ')
+    .trim()
+    .replace(/\|/g, '\\|')
+}
+
 function applyI18n () {
   if (window.prmdApplyI18nDom) {
     window.prmdApplyI18nDom({
@@ -787,14 +796,36 @@ function stripMdToPlain (md) {
   }
 }
 
-function mdPlainLenAt (md, index) {
-  return stripMdToPlain(md.slice(0, Math.max(0, index))).length
+let _mdPlainFullCache = { md: '', plain: '' }
+
+function getMdPlainFull (md) {
+  const s = String(md || '')
+  if (_mdPlainFullCache.md !== s) {
+    _mdPlainFullCache = { md: s, plain: stripMdToPlain(s) }
+  }
+  return _mdPlainFullCache.plain
 }
+
+function invalidateMdPlainCache () {
+  _mdPlainFullCache = { md: '', plain: '' }
+}
+
+function mdPlainLenAt (md, index) {
+  if (!md || index <= 0) return 0
+  if (index >= md.length) return getMdPlainFull(md).length
+  return stripMdToPlain(md.slice(0, index)).length
+}
+
+const MD_PLAIN_OFFSET_HEAVY = 8000
 
 function plainOffsetToMdIndex (md, plainOffset) {
   if (!md || plainOffset <= 0) return 0
-  const fullLen = stripMdToPlain(md).length
-  if (plainOffset >= fullLen) return md.length
+  const fullPlain = getMdPlainFull(md)
+  if (plainOffset >= fullPlain.length) return md.length
+  if (md.length >= MD_PLAIN_OFFSET_HEAVY || fullPlain.length >= MD_PLAIN_OFFSET_HEAVY) {
+    const ratio = fullPlain.length ? plainOffset / fullPlain.length : 0
+    return Math.min(md.length, Math.max(0, Math.round(md.length * ratio)))
+  }
   let lo = 0, hi = md.length
   while (lo < hi) {
     const mid = (lo + hi) >> 1
@@ -806,7 +837,138 @@ function plainOffsetToMdIndex (md, plainOffset) {
 
 const VIEWPORT_ANCHOR_RATIO = 0.12
 
+const RICH_INLINE_TAGS = new Set([
+  'span', 'strong', 'b', 'em', 'i', 'u', 's', 'del', 'code', 'a', 'font', 'mark', 'sub', 'sup', 'small'
+])
+
+function richNodePlainGapAfter (child) {
+  if (!child || child.nodeType !== 1) return 0
+  const tag = child.tagName.toLowerCase()
+  if (tag === 'br') return 0
+  if (RICH_INLINE_TAGS.has(tag)) return 0
+  return 1
+}
+
+function richPlainLenOfNode (node) {
+  if (!node) return 0
+  if (node.nodeType === 3) return String(node.textContent || '').replace(/\r/g, '').length
+  if (node.nodeType !== 1) return 0
+  const tag = node.tagName.toLowerCase()
+  if (tag === 'br') return 1
+  let sum = 0
+  let prev = null
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (prev) sum += richNodePlainGapAfter(prev)
+    sum += richPlainLenOfNode(child)
+    prev = child
+  }
+  return sum
+}
+
+/** O(visited) 前缀长度，避免 cloneContents 在大文档上 O(n²) */
+function accumulateRichPlainUntil (root, endContainer, endOffset) {
+  if (!root || !endContainer) return 0
+  let plain = 0
+  let done = false
+
+  function visit (node) {
+    if (done || !node) return
+    if (node === endContainer && node.nodeType === 3) {
+      plain += String(node.textContent || '').slice(0, endOffset).replace(/\r/g, '').length
+      done = true
+      return
+    }
+    if (node.nodeType === 3) {
+      plain += String(node.textContent || '').replace(/\r/g, '').length
+      return
+    }
+    if (node.nodeType !== 1) return
+    const tag = node.tagName.toLowerCase()
+    if (tag === 'br') {
+      plain += 1
+      return
+    }
+    if (node === endContainer && node.nodeType === 1) {
+      let prev = null
+      const limit = Math.min(endOffset, node.childNodes.length)
+      for (let i = 0; i < limit; i++) {
+        const child = node.childNodes[i]
+        if (prev) plain += richNodePlainGapAfter(prev)
+        visit(child)
+        prev = child
+      }
+      done = true
+      return
+    }
+    let prev = null
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (done) return
+      if (child === endContainer || (child.nodeType === 1 && child.contains && child.contains(endContainer))) {
+        if (prev) plain += richNodePlainGapAfter(prev)
+        visit(child)
+        return
+      }
+      if (prev) plain += richNodePlainGapAfter(prev)
+      visit(child)
+      prev = child
+    }
+  }
+
+  visit(root)
+  if (!done && root.contains && root.contains(endContainer)) {
+    const range = document.createRange()
+    try {
+      range.setStart(root, 0)
+      range.setEnd(endContainer, endOffset)
+      const box = document.createElement('div')
+      box.appendChild(range.cloneContents())
+      return (box.innerText || box.textContent || '').replace(/\r\n/g, '\n').length
+    } catch (_) {
+      return plain
+    }
+  }
+  return plain
+}
+
+function forEachRichPlainCaret (fn) {
+  let plain = 0
+  function walk (parent) {
+    let prev = null
+    for (let child = parent.firstChild; child; child = child.nextSibling) {
+      if (prev) {
+        const gap = richNodePlainGapAfter(prev)
+        for (let g = 0; g < gap; g++) {
+          if (fn(null, 0, plain) === false) return false
+          plain++
+        }
+      }
+      if (child.nodeType === 3) {
+        const t = String(child.textContent || '').replace(/\r/g, '')
+        for (let i = 0; i <= t.length; i++) {
+          if (fn(child, i, plain) === false) return false
+          if (i < t.length) plain++
+        }
+      } else if (child.nodeType === 1) {
+        const tag = child.tagName.toLowerCase()
+        if (tag === 'br') {
+          if (fn(child, 0, plain) === false) return false
+          plain++
+        } else {
+          if (walk(child) === false) return false
+        }
+      }
+      prev = child
+    }
+  }
+  walk(richEditor)
+  return plain
+}
+
 function plainOffsetFromRangeIn (root, range) {
+  if (!range) return 0
+  if (root === richEditor) {
+    return accumulateRichPlainUntil(root, range.startContainer, range.startOffset)
+  }
   const pre = range.cloneRange()
   pre.selectNodeContents(root)
   pre.setEnd(range.startContainer, range.startOffset)
@@ -1733,13 +1895,38 @@ function setModified(v){
 }
 function setTitle(n){$('file-name').textContent=n}
 function bn(p){return p.replace(/\\/g,'/').split('/').pop()}
+/**
+ * 字数 / 字符统计（对齐常见写作软件习惯）
+ * - 字数：中文（含扩展区汉字）每字 +1；英文按「词」计（连续字母数字为一词，Typora / Word 中文模式类似）
+ * - 字符：中文每字 +1；英文、数字按单个字符 +1（不计空格与换行，接近 Word「字符数（不计空格）」）
+ */
+function computeEditorStats (text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n')
+  const cjk = (raw.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
+  const enWords = (raw.match(/[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?/g) || []).length
+  const words = raw.trim() === '' ? 0 : cjk + enWords
+  let chars = 0
+  for (const ch of raw) {
+    if (ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r') continue
+    if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch)) { chars++; continue }
+    if (/[A-Za-z0-9]/.test(ch)) chars++
+  }
+  const lines = raw.length ? raw.split('\n').length : 1
+  return { words, chars, lines }
+}
+
+function getEditorTextForStats () {
+  if (editMode === 'markdown' || editMode === 'preview') return mdEditor.value
+  if (editMode === 'split' && _lastSrc === 'md') return mdEditor.value
+  return richEditor.innerText || ''
+}
+
 function updateStatus(){
-  const text=editMode==='markdown'||_lastSrc==='md'?mdEditor.value:(richEditor.innerText||'')
-  const cjk=(text.match(/[\u4e00-\u9fa5]/g)||[]).length
-  const words=text.trim()===''?0:text.trim().split(/\s+/).length+cjk
+  const text = getEditorTextForStats()
+  const { words, chars, lines } = computeEditorStats(text)
   $('status-words').textContent=tt('status.words', { n: words })
-  $('status-chars').textContent=tt('status.chars', { n: text.length })
-  $('status-lines').textContent=tt('status.lines', { n: text.split('\n').length })
+  $('status-chars').textContent=tt('status.chars', { n: chars })
+  $('status-lines').textContent=tt('status.lines', { n: lines })
   const pathEl=$('status-path'), wrap=$('status-path-wrap'), copyBtn=$('btn-copy-doc-path')
   if(pathEl){
     if(currentFile){
@@ -2272,13 +2459,23 @@ function nodeToMd(node){
     }).join('\n')
     case 'ol':return Array.from(node.children).map((li,i)=>`${i+1}. `+li.innerText.trim()).join('\n')
     case 'li':return inn()
+    case 'thead': case 'tbody': case 'tfoot': return ''
+    case 'tr': case 'td': case 'th':
+      if (node.closest && node.closest('table')) return ''
+      return inn()
     case 'table':{
-      const rows=Array.from(node.querySelectorAll('tr'));if(!rows.length)return ''
-      let md='';rows.forEach((tr,ri)=>{
-        const cells=Array.from(tr.querySelectorAll('th,td'))
-        md+='| '+cells.map(c=>c.innerText.trim().replace(/\|/g,'\\|')).join(' | ')+' |\n'
-        if(ri===0)md+='| '+cells.map(()=>':---').join(' | ')+' |\n'
-      });return md.trimEnd()
+      const rows = Array.from(
+        node.querySelectorAll(':scope > thead > tr, :scope > tbody > tr, :scope > tfoot > tr, :scope > tr')
+      )
+      if (!rows.length) return ''
+      let md = ''
+      rows.forEach((tr, ri) => {
+        const cells = Array.from(tr.querySelectorAll('th,td'))
+        if (!cells.length) return
+        md += '| ' + cells.map(tableCellMdText).join(' | ') + ' |\n'
+        if (ri === 0) md += '| ' + cells.map(() => ':---').join(' | ') + ' |\n'
+      })
+      return md.trimEnd()
     }
     default:return inn()
   }
@@ -2306,7 +2503,7 @@ function getRichCaretOffset () {
 }
 
 function setRichCaretOffset (offset) {
-  const maxLen = (richEditor.innerText || richEditor.textContent || '').replace(/\r\n/g, '\n').length
+  const maxLen = richPlainLenOfNode(richEditor)
   const target = Math.max(0, Math.min(offset, maxLen))
   const sel = window.getSelection()
   const range = document.createRange()
@@ -2317,29 +2514,16 @@ function setRichCaretOffset (offset) {
     sel.addRange(range)
     return
   }
-  const walker = document.createTreeWalker(richEditor, NodeFilter.SHOW_TEXT)
-  let bestNode = null
-  let bestOff = 0
-  let bestDist = Infinity
-  let node
-  while ((node = walker.nextNode())) {
-    const len = node.textContent.length
-    for (let i = 0; i <= len; i++) {
-      range.setStart(node, i)
-      range.collapse(true)
-      const dist = Math.abs(plainOffsetFromRangeIn(richEditor, range) - target)
-      if (dist < bestDist) {
-        bestDist = dist
-        bestNode = node
-        bestOff = i
-        if (dist === 0) break
-      }
-    }
-    if (bestDist === 0) break
-  }
-  if (bestNode) {
-    range.setStart(bestNode, bestOff)
+  let placed = false
+  forEachRichPlainCaret((node, off, plain) => {
+    if (plain < target) return
+    if (!node) return
+    range.setStart(node, off)
     range.collapse(true)
+    placed = true
+    return false
+  })
+  if (placed) {
     sel.removeAllRanges()
     sel.addRange(range)
     return
