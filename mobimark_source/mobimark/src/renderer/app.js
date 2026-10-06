@@ -379,7 +379,7 @@ function compactCurrentMarkdown () {
     syncEditorsFromMd()
   }
   setModified(true)
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   scheduleRender()
   updateStatus()
   return true
@@ -1287,9 +1287,10 @@ async function pastePlainTextInRichEditor () {
     document.execCommand('paste')
     return
   }
+  _richSkipNextInputHistory = true
   document.execCommand('insertText', false, text)
   markWysiwygEdited()
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -1382,7 +1383,18 @@ function setMode(mode) {
 // ════ 富文本编辑器 ══════════════════════════════════════════
 function setupRichEditor(){
   richEditor.addEventListener('beforeinput', e => {
-    if (editsBlocked()) e.preventDefault()
+    if (editsBlocked()) {
+      e.preventDefault()
+      return
+    }
+    let kind = histInputKindFromType(e.inputType)
+    if (e.isComposing) kind = 'type'
+    _richInputHint = {
+      kind,
+      caretBefore: getRichCaretOffset(),
+      composing: !!e.isComposing,
+      insertText: e.data != null ? String(e.data) : ''
+    }
   })
   richEditor.addEventListener('paste', e => {
     if (editsBlocked()) {
@@ -1391,13 +1403,37 @@ function setupRichEditor(){
     }
     e.preventDefault()
     const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || ''
+    endRichHistCoalesce()
+    _richSkipNextInputHistory = true
     document.execCommand('insertText', false, text)
+    markWysiwygEdited()
+    recordRichHistory({ discrete: true })
+    setModified(true)
+    scheduleRender()
+    updateStatus()
+    if (editMode === 'split') syncEditorsFromWysiwyg()
   })
-  richEditor.addEventListener('input',()=>{
+  richEditor.addEventListener('input', e => {
     if (_editorSyncing || _documentLoading) return
+    if (_richSkipNextInputHistory) {
+      _richSkipNextInputHistory = false
+      _richInputHint = null
+      return
+    }
     if (!hasRichContentChanged()) return
     markWysiwygEdited()
-    recordRichHistory()
+    const hint = _richInputHint
+    _richInputHint = null
+    let kind = hint ? hint.kind : 'type'
+    if (e && e.isComposing) kind = 'type'
+    recordRichHistory({
+      discrete: histKindIsDiscrete(kind),
+      kind,
+      caretBefore: hint ? hint.caretBefore : undefined,
+      composing: (hint && hint.composing) || (e && e.isComposing)
+    })
+    const inserted = (hint && hint.insertText) || (e && e.data != null ? String(e.data) : '')
+    if (kind === 'type' && histInputClosesCoalesceGroup(inserted)) endRichHistCoalesce()
     setModified(true)
     scheduleRender()
     updateStatus()
@@ -1429,18 +1465,23 @@ function setupRichEditor(){
     if(acc&&e.key.toLowerCase()==='a'){e.preventDefault();document.execCommand('selectAll');return}
     if(acc){
       switch(e.key.toLowerCase()){
-        case 'b':e.preventDefault();document.execCommand('bold');return
-        case 'i':e.preventDefault();document.execCommand('italic');return
-        case 'u':e.preventDefault();document.execCommand('underline');return
+        case 'b':e.preventDefault();document.execCommand('bold');queueMicrotask(recordRichFmtChange);return
+        case 'i':e.preventDefault();document.execCommand('italic');queueMicrotask(recordRichFmtChange);return
+        case 'u':e.preventDefault();document.execCommand('underline');queueMicrotask(recordRichFmtChange);return
         case 's':e.preventDefault();e.stopPropagation();e.shiftKey?saveFileAs():saveFile();return
         case 'f':e.preventDefault();e.stopPropagation();showFindBar();return
         case 'n':e.preventDefault();e.stopPropagation();newFile();return
         case 'o':e.preventDefault();e.stopPropagation();openFile();return
       }
     }
-    if(e.key==='Tab'){e.preventDefault();document.execCommand('insertHTML',false,'&nbsp;&nbsp;')}
+    if(e.key==='Tab'){e.preventDefault();document.execCommand('insertHTML',false,'&nbsp;&nbsp;');queueMicrotask(recordRichFmtChange)}
+    const navKeys = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown']
+    if (!acc && navKeys.includes(e.key)) endRichHistCoalesce()
   })
-  richEditor.addEventListener('mouseup',updateFmtBtns)
+  richEditor.addEventListener('mouseup', () => {
+    endRichHistCoalesce()
+    updateFmtBtns()
+  })
   richEditor.addEventListener('keyup',()=>{_lastSrc='wysiwyg';updateStatus();updateFmtBtns()})
 
   const richToolbar = $('rich-toolbar')
@@ -1452,29 +1493,29 @@ function setupRichEditor(){
       e.stopPropagation()
     }, true)
   }
-  $('r-bold').onclick=()=>{document.execCommand('bold');updateFmtBtns()}
-  $('r-italic').onclick=()=>{document.execCommand('italic');updateFmtBtns()}
-  $('r-underline').onclick=()=>{document.execCommand('underline');updateFmtBtns()}
-  $('r-strike').onclick=()=>{document.execCommand('strikeThrough');updateFmtBtns()}
-  $('r-align-left').onclick=()=>document.execCommand('justifyLeft')
-  $('r-align-center').onclick=()=>document.execCommand('justifyCenter')
-  $('r-align-right').onclick=()=>document.execCommand('justifyRight')
-  $('r-ul').onclick=()=>document.execCommand('insertUnorderedList')
-  $('r-ol').onclick=()=>document.execCommand('insertOrderedList')
-  $('r-task').onclick=()=>{document.execCommand('insertHTML',false,'<ul><li><input type="checkbox"> '+tt('task.item')+'</li></ul>');setModified(true)}
+  $('r-bold').onclick=()=>{document.execCommand('bold');updateFmtBtns();queueMicrotask(recordRichFmtChange)}
+  $('r-italic').onclick=()=>{document.execCommand('italic');updateFmtBtns();queueMicrotask(recordRichFmtChange)}
+  $('r-underline').onclick=()=>{document.execCommand('underline');updateFmtBtns();queueMicrotask(recordRichFmtChange)}
+  $('r-strike').onclick=()=>{document.execCommand('strikeThrough');updateFmtBtns();queueMicrotask(recordRichFmtChange)}
+  $('r-align-left').onclick=()=>{document.execCommand('justifyLeft');queueMicrotask(recordRichFmtChange)}
+  $('r-align-center').onclick=()=>{document.execCommand('justifyCenter');queueMicrotask(recordRichFmtChange)}
+  $('r-align-right').onclick=()=>{document.execCommand('justifyRight');queueMicrotask(recordRichFmtChange)}
+  $('r-ul').onclick=()=>{document.execCommand('insertUnorderedList');queueMicrotask(recordRichFmtChange)}
+  $('r-ol').onclick=()=>{document.execCommand('insertOrderedList');queueMicrotask(recordRichFmtChange)}
+  $('r-task').onclick=()=>{document.execCommand('insertHTML',false,'<ul><li><input type="checkbox"> '+tt('task.item')+'</li></ul>');queueMicrotask(recordRichFmtChange)}
   $('r-quote').onclick=()=>wrapTag('blockquote')
   $('r-code').onclick=()=>wrapTag('code')
   $('r-codeblock').onclick=()=>insertCodeBlock()
   $('r-link').onclick=()=>showLinkDialog()
   $('r-image').onclick=()=>insertMarkdownImageAtCursor()
   $('r-table').onclick=()=>showTableDialog()
-  $('r-hr').onclick=()=>document.execCommand('insertHorizontalRule')
+  $('r-hr').onclick=()=>{document.execCommand('insertHorizontalRule');queueMicrotask(recordRichFmtChange)}
   $('btn-find-r').onclick=()=>showFindBar()
   $('heading-select').onchange=function(){
     document.execCommand('formatBlock',false,this.value==='p'?'<p>':'<'+this.value+'>')
     richEditor.focus()
     markWysiwygEdited()
-    recordRichHistory()
+    recordRichHistory({ discrete: true })
     setModified(true)
     scheduleOutlineRefresh()
     scheduleRender()
@@ -1498,7 +1539,7 @@ function wrapTag(tag){
   const r=sel.getRangeAt(0),el=document.createElement(tag)
   try{r.surroundContents(el)}catch(e){el.appendChild(r.extractContents());r.insertNode(el)}
   setModified(true)
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   scheduleRender()
 }
 function insertCodeBlock(){
@@ -1510,7 +1551,7 @@ function insertCodeBlock(){
   document.execCommand('insertHTML',false,pre.outerHTML)
   attachCodeBlockCopyButtons(richEditor)
   setModified(true)
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   scheduleRender()
 }
 
@@ -1562,7 +1603,18 @@ function attachCodeBlockCopyButtons (root) {
 
 // ════ MD 工具栏 ══════════════════════════════════════════════
 function setupMdToolbar(){
-  mdEditor.addEventListener('input',()=>{
+  mdEditor.addEventListener('beforeinput', e => {
+    if (_editorSyncing) return
+    let kind = histInputKindFromType(e.inputType)
+    if (e.isComposing) kind = 'type'
+    _mdInputHint = {
+      kind,
+      caretBefore: mdEditor.selectionStart,
+      composing: !!e.isComposing,
+      insertText: e.data != null ? String(e.data) : ''
+    }
+  })
+  mdEditor.addEventListener('input', e => {
     if (_editorSyncing) return
     _lastSrc='md'
     _wysiwygEdited=false
@@ -1570,7 +1622,18 @@ function setupMdToolbar(){
     _richSyncedMd=null
     _previewRenderedMd=null
     _outlineMdSource=''
-    recordMdHistory()
+    const hint = _mdInputHint
+    _mdInputHint = null
+    let kind = hint ? hint.kind : 'type'
+    if (e && e.isComposing) kind = 'type'
+    recordMdHistory({
+      discrete: histKindIsDiscrete(kind),
+      kind,
+      caretBefore: hint ? hint.caretBefore : undefined,
+      composing: (hint && hint.composing) || (e && e.isComposing)
+    })
+    const inserted = (hint && hint.insertText) || (e && e.data != null ? String(e.data) : '')
+    if (kind === 'type' && histInputClosesCoalesceGroup(inserted)) endMdHistCoalesce()
     setModified(true)
     scheduleRender()
     updateStatus()
@@ -1596,7 +1659,10 @@ function setupMdToolbar(){
       }
     }
     if(e.key==='Enter')handleMdEnter(e)
+    const navKeys = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown']
+    if (!acc && navKeys.includes(e.key)) endMdHistCoalesce()
   })
+  mdEditor.addEventListener('mouseup', () => endMdHistCoalesce())
   mdEditor.addEventListener('keyup',()=>{_lastSrc='md';updateStatus()})
 
   const mdToolbar = $('md-toolbar')
@@ -2483,12 +2549,104 @@ function nodeToMd(node){
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 // ════ 统一撤销/重做（严格按操作顺序，文字与表格结构同一栈）════
-const EDITOR_HIST_MAX = 80
+const EDITOR_HIST_MAX = 150
+/** 参考 ProseMirror/Lexical 默认 ~500ms；过长会把整段合成一步 */
+const UNDO_COALESCE_MS = 500
+/** 本次输入含这些字符时，当前步记完后结束合并（下一段输入新开 undo 步） */
+const HIST_COALESCE_BOUNDARY_RE = /[\s。．！？；，、：:；,.!?…—\-「」『』（）()\[\]【】"'`~]/
 let _histApplying = false
 let _richHist = []
 let _richHistIdx = 0
 let _mdHist = []
 let _mdHistIdx = 0
+/** @type {{ deadline: number, bucket: string, lastCaret: number } | null} */
+let _richCoalesce = null
+/** @type {{ deadline: number, bucket: string, lastCaret: number } | null} */
+let _mdCoalesce = null
+let _richInputHint = null
+let _mdInputHint = null
+let _richSkipNextInputHistory = false
+
+function endRichHistCoalesce () {
+  _richCoalesce = null
+}
+
+function endMdHistCoalesce () {
+  _mdCoalesce = null
+}
+
+function endHistCoalesce () {
+  endRichHistCoalesce()
+  endMdHistCoalesce()
+}
+
+function histInputKindFromType (inputType) {
+  const t = String(inputType || '')
+  if (!t) return 'type'
+  if (t === 'insertText' || t === 'insertCompositionText' || t === 'insertReplacementText') return 'type'
+  if (t === 'deleteContentBackward' || t === 'deleteContentForward' || t === 'deleteByCut') return 'delete'
+  if (t === 'insertParagraph' || t === 'insertLineBreak') return 'paragraph'
+  if (t.startsWith('insertFrom')) return 'paste'
+  return 'type'
+}
+
+function histKindIsDiscrete (kind) {
+  return kind === 'paragraph' || kind === 'paste'
+}
+
+/** 合并链：打字/未知 input 与退格分开；段落与粘贴永不合并 */
+function histCoalesceBucket (kind) {
+  return kind === 'delete' ? 'delete' : 'type'
+}
+
+function histInputClosesCoalesceGroup (inserted) {
+  const s = String(inserted || '')
+  if (!s) return false
+  const last = s[s.length - 1]
+  return HIST_COALESCE_BOUNDARY_RE.test(last)
+}
+
+function histCaretContinues (caretBefore, lastCaret, caretAfter) {
+  if (lastCaret == null) return true
+  if (caretBefore != null && caretBefore === lastCaret) return true
+  if (caretAfter != null && histCaretAdjacent(lastCaret, caretAfter)) return true
+  return false
+}
+
+function histCaretAdjacent (before, after) {
+  if (before == null || after == null) return true
+  return Math.abs(after - before) <= 32
+}
+
+function shouldCoalesceRichHistory ({ discrete, kind, caret, caretBefore, composing }) {
+  if (discrete || histKindIsDiscrete(kind)) return false
+  if (_richHistIdx !== _richHist.length - 1 || _richHistIdx <= 0) return false
+  if (!_richCoalesce || Date.now() > _richCoalesce.deadline) return false
+  const bucket = histCoalesceBucket(kind)
+  if (_richCoalesce.bucket !== bucket) return false
+  if (composing) return true
+  if (!histCaretContinues(caretBefore, _richCoalesce.lastCaret, caret)) return false
+  return true
+}
+
+function shouldCoalesceMdHistory ({ discrete, kind, caret, caretBefore, composing }) {
+  if (discrete || histKindIsDiscrete(kind)) return false
+  if (_mdHistIdx !== _mdHist.length - 1 || _mdHistIdx <= 0) return false
+  if (!_mdCoalesce || Date.now() > _mdCoalesce.deadline) return false
+  const bucket = histCoalesceBucket(kind)
+  if (_mdCoalesce.bucket !== bucket) return false
+  if (composing) return true
+  if (!histCaretContinues(caretBefore, _mdCoalesce.lastCaret, caret)) return false
+  return true
+}
+
+function touchRichCoalesce (kind, caret) {
+  _richCoalesce = { deadline: Date.now() + UNDO_COALESCE_MS, bucket: histCoalesceBucket(kind), lastCaret: caret }
+}
+
+function touchMdCoalesce (kind, caret) {
+  _mdCoalesce = { deadline: Date.now() + UNDO_COALESCE_MS, bucket: histCoalesceBucket(kind), lastCaret: caret }
+}
 
 function isMdEditing () {
   return editMode === 'markdown' || (editMode === 'split' && isMdFocused())
@@ -2555,39 +2713,83 @@ function resetMdHistory () {
 function resetEditorHistory () {
   resetRichHistory()
   resetMdHistory()
+  endHistCoalesce()
 }
 
-function recordRichHistory () {
+function recordRichHistory (opts = {}) {
   if (_histApplying || readOnlyDoc) return
+  const discrete = !!opts.discrete
+  const kind = opts.kind || (discrete ? 'other' : 'type')
   const snap = snapshotRich()
   const cur = _richHist[_richHistIdx]
   if (cur && cur.html === snap.html && cur.caret === snap.caret) return
-  _richHist = _richHist.slice(0, _richHistIdx + 1)
-  _richHist.push(snap)
-  _richHistIdx = _richHist.length - 1
-  while (_richHist.length > EDITOR_HIST_MAX) {
-    _richHist.shift()
-    _richHistIdx--
+  const coalesce = shouldCoalesceRichHistory({
+    discrete,
+    kind,
+    caret: snap.caret,
+    caretBefore: opts.caretBefore,
+    composing: !!opts.composing
+  })
+  if (coalesce) {
+    _richHist[_richHistIdx] = snap
+    touchRichCoalesce(kind, snap.caret)
+  } else {
+    _richHist = _richHist.slice(0, _richHistIdx + 1)
+    _richHist.push(snap)
+    _richHistIdx = _richHist.length - 1
+    while (_richHist.length > EDITOR_HIST_MAX) {
+      _richHist.shift()
+      _richHistIdx--
+    }
+    if (discrete || histKindIsDiscrete(kind)) endRichHistCoalesce()
+    else touchRichCoalesce(kind, snap.caret)
   }
 }
 
-function recordMdHistory () {
+function recordMdHistory (opts = {}) {
   if (_histApplying || readOnlyDoc) return
+  const discrete = !!opts.discrete
+  const kind = opts.kind || (discrete ? 'other' : 'type')
   const snap = snapshotMd()
   const cur = _mdHist[_mdHistIdx]
   if (cur && cur.value === snap.value && cur.start === snap.start && cur.end === snap.end) return
-  _mdHist = _mdHist.slice(0, _mdHistIdx + 1)
-  _mdHist.push(snap)
-  _mdHistIdx = _mdHist.length - 1
-  while (_mdHist.length > EDITOR_HIST_MAX) {
-    _mdHist.shift()
-    _mdHistIdx--
+  const coalesce = shouldCoalesceMdHistory({
+    discrete,
+    kind,
+    caret: snap.start,
+    caretBefore: opts.caretBefore,
+    composing: !!opts.composing
+  })
+  if (coalesce) {
+    _mdHist[_mdHistIdx] = snap
+    touchMdCoalesce(kind, snap.start)
+  } else {
+    _mdHist = _mdHist.slice(0, _mdHistIdx + 1)
+    _mdHist.push(snap)
+    _mdHistIdx = _mdHist.length - 1
+    while (_mdHist.length > EDITOR_HIST_MAX) {
+      _mdHist.shift()
+      _mdHistIdx--
+    }
+    if (discrete || histKindIsDiscrete(kind)) endMdHistCoalesce()
+    else touchMdCoalesce(kind, snap.start)
   }
+}
+
+function recordRichFmtChange () {
+  if (_histApplying || readOnlyDoc) return
+  _richSkipNextInputHistory = true
+  markWysiwygEdited()
+  recordRichHistory({ discrete: true })
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 function applyRichHistoryIndex (idx) {
   const snap = _richHist[idx]
   if (!snap) return
+  endHistCoalesce()
   _histApplying = true
   richEditor.innerHTML = snap.html
   richEditor.focus()
@@ -2601,6 +2803,7 @@ function applyRichHistoryIndex (idx) {
 function applyMdHistoryIndex (idx) {
   const snap = _mdHist[idx]
   if (!snap) return
+  endHistCoalesce()
   _histApplying = true
   mdEditor.value = snap.value
   _wysiwygEdited = false
@@ -2646,7 +2849,7 @@ function insertMd(txt){
   mdEditor.value=mdEditor.value.substring(0,s)+txt+mdEditor.value.substring(e2)
   mdEditor.selectionStart=mdEditor.selectionEnd=s+txt.length
   mdEditor.focus()
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
 }
@@ -2657,7 +2860,7 @@ function wrapMd(b,a){
   if(sel){mdEditor.selectionStart=s+b.length;mdEditor.selectionEnd=e2+b.length}
   else{mdEditor.selectionStart=mdEditor.selectionEnd=s+b.length}
   mdEditor.focus()
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
 }
@@ -2669,7 +2872,7 @@ function prefixMd(prefix){
   if(line.startsWith(prefix)){mdEditor.value=v.substring(0,ls)+line.substring(prefix.length)+v.substring(end);mdEditor.selectionStart=mdEditor.selectionEnd=Math.max(ls,pos-prefix.length)}
   else{mdEditor.value=v.substring(0,ls)+prefix+line+v.substring(end);mdEditor.selectionStart=mdEditor.selectionEnd=pos+prefix.length}
   mdEditor.focus()
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
 }
@@ -2678,6 +2881,8 @@ function prefixMd(prefix){
 // 保存打开对话框时的光标位置
 let _savedRange = null
 let _savedMdPos = {start:0, end:0}
+let _savedRichScroll = 0
+let _savedMdScroll = 0
 /** 光标在表格内时为扩展模式：{ kind:'rich', table } 或 { kind:'md', info } */
 let _tableExtendCtx = null
 
@@ -2767,6 +2972,9 @@ function updateTableDialogUi () {
 function showTableDialog(){
   _tableExtendCtx = null
   if (editsBlocked()) return
+  endHistCoalesce()
+  _savedRichScroll = richEditor.scrollTop
+  _savedMdScroll = mdEditor.scrollTop
   // 工具栏：仅插入新表（扩展行列请用表内右键）
   if (editMode === 'wysiwyg' || (editMode === 'split' && isRichFocused())) {
     const sel = window.getSelection()
@@ -2822,7 +3030,7 @@ function extendRichTable (table, addRows, addCols) {
       }
     })
   }
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -2852,7 +3060,7 @@ function extendMdTable (info, addRows, addCols) {
   lines.splice(info.startLine, info.endLine - info.startLine + 1, ...block)
   mdEditor.value = lines.join('\n')
   mdEditor.focus()
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -2942,7 +3150,7 @@ function richTableInsertRow (table, rowIndex, where) {
       setModified(true)
       scheduleRender()
       updateStatus()
-      queueMicrotask(() => recordRichHistory())
+      queueMicrotask(() => recordRichHistory({ discrete: true }))
       return
     }
   }
@@ -2959,7 +3167,7 @@ function richTableInsertRow (table, rowIndex, where) {
     if (next) body.insertBefore(tr, next)
     else body.appendChild(tr)
   }
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -2979,7 +3187,7 @@ function richTableInsertCol (table, colIndex, where) {
       else tr.appendChild(cell)
     }
   })
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -2993,11 +3201,11 @@ function richTableDeleteRow (table, rowIndex) {
     setModified(true)
     scheduleRender()
     updateStatus()
-    queueMicrotask(() => recordRichHistory())
+    queueMicrotask(() => recordRichHistory({ discrete: true }))
     return
   }
   rows[rowIndex]?.remove()
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -3010,7 +3218,7 @@ function richTableDeleteCol (table, colIndex) {
     const cells = tr.querySelectorAll('th, td')
     if (cells[colIndex]) cells[colIndex].remove()
   })
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -3018,7 +3226,7 @@ function richTableDeleteCol (table, colIndex) {
 
 function richTableDelete (table) {
   table.remove()
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -3043,7 +3251,7 @@ function mdTableApplyBlock (info, block) {
   const pos = info.startChar + text.length
   mdEditor.focus()
   mdEditor.setSelectionRange(pos, pos)
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
@@ -3166,7 +3374,8 @@ function insertRichTable(rows,cols,header){
   }
   html += '</table>'
 
-  richEditor.focus()
+  const keepScroll = _savedRichScroll
+  richEditor.focus({ preventScroll: true })
 
   // 恢复保存的光标位置
   if(_savedRange){
@@ -3198,17 +3407,35 @@ function insertRichTable(rows,cols,header){
     while(tmp.firstChild) richEditor.appendChild(tmp.firstChild)
   }
 
-  recordRichHistory()
+  richEditor.scrollTop = keepScroll
+  requestAnimationFrame(() => {
+    richEditor.scrollTop = keepScroll
+    scrollRichCaretIntoView()
+  })
+  markWysiwygEdited()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()
 }
 function insertMdTable(rows,cols,header){
+  if (editsBlocked()) return
   let md='\n'
   md+='| '+Array.from({length:cols},(_,i)=>tableColText(i + 1)).join(' | ')+' |\n'
   md+='| '+Array(cols).fill(':---').join(' | ')+' |\n'
   for(let r=0;r<rows;r++)md+='| '+Array(cols).fill(tableCellText()).join(' | ')+' |\n'
-  insertMd(md+'\n')
+  md += '\n'
+  const s = _savedMdPos.start
+  const e2 = _savedMdPos.end
+  const keepScroll = _savedMdScroll
+  mdEditor.value = mdEditor.value.substring(0, s) + md + mdEditor.value.substring(e2)
+  mdEditor.selectionStart = mdEditor.selectionEnd = s + md.length
+  mdEditor.focus({ preventScroll: true })
+  mdEditor.scrollTop = keepScroll
+  recordMdHistory({ discrete: true })
+  setModified(true)
+  scheduleRender()
+  updateStatus()
 }
 
 let _savedLinkRange = null
@@ -3240,7 +3467,7 @@ $('link-ok').onclick=()=>{
     }
     document.execCommand('insertHTML',false,`<a href="${url}">${txt||url}</a>`)
     prepareRichLinksForEditing()
-    recordRichHistory()
+    recordRichHistory({ discrete: true })
     setModified(true)
     scheduleRender()
   } else {
@@ -3284,7 +3511,7 @@ function replaceOne(){
   if(!findMatches.length)return
   const i=findMatches[findIdx]
   mdEditor.value=mdEditor.value.substring(0,i)+replaceInput.value+mdEditor.value.substring(i+findInput.value.length)
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   doFind()
@@ -3293,7 +3520,7 @@ function replaceAll(){
   if(editsBlocked())return
   if(!findInput.value)return
   mdEditor.value=mdEditor.value.replace(new RegExp(escRe(findInput.value),'g'),replaceInput.value)
-  recordMdHistory()
+  recordMdHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   doFind()
@@ -6219,7 +6446,7 @@ async function insertMarkdownImageAtCursor(){
   img.setAttribute('data-md-src',r.mdRel)
   document.execCommand('insertHTML',false,img.outerHTML)
   markWysiwygEdited()
-  recordRichHistory()
+  recordRichHistory({ discrete: true })
   setModified(true)
   scheduleRender()
   updateStatus()

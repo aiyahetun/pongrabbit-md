@@ -16,6 +16,7 @@ function run (cmd, args) {
 
 run('node', ['scripts/selfcheck-locales.js'])
 run('node', ['scripts/selfcheck-license.js'])
+run('node', ['scripts/selfcheck-undo-coalesce.js'])
 run('node', ['scripts/prepare-nsis-eula.js'])
 
 if (process.platform !== 'win32') {

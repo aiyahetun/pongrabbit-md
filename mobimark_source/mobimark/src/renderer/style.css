@@ -47,6 +47,7 @@ input,select,textarea{outline:none}
   --bg-sidebar:   #eff4f9;
   --bg-hover:     #e8eef6;
   --bg-active:    #dae6f2;
+  --selection-bg: #c5d9eb;
   --bd:           rgba(53,97,144,0.12);
   --t1:           #2b343a;
   --t2:           #576067;
@@ -70,6 +71,7 @@ input,select,textarea{outline:none}
   --bg-sidebar:   #161514;
   --bg-hover:     rgba(139,126,110,0.14);
   --bg-active:    rgba(139,126,110,0.24);
+  --selection-bg: rgba(109, 142, 184, 0.42);
   --bd:           rgba(255,255,255,0.08);
   --t1:           #d1cec7;
   --t2:           #a09e9b;
@@ -98,6 +100,8 @@ input,select,textarea{outline:none}
   --bg-sidebar:   rgba(255,255,255,0.058);
   --bg-hover:     rgba(255,255,255,0.16);
   --bg-active:    rgba(255,255,255,0.24);
+  /* 勿用半透白作选区：无壁纸时与 --bg-editor 几乎同色 */
+  --selection-bg: rgba(53, 97, 144, 0.32);
   --bd:           rgba(255,255,255,0.22);
   --t1:           #2b343a;
   --t2:           #576067;
@@ -436,6 +440,7 @@ input,select,textarea{outline:none}
     --bg-sidebar:   rgba(26, 26, 30, 0.09);
     --bg-hover:     rgba(255, 255, 255, 0.06);
     --bg-active:    rgba(255, 255, 255, 0.10);
+    --selection-bg: rgba(126, 179, 232, 0.40);
     --bd:           rgba(255, 255, 255, 0.08);
     --t1:           #e8e8ed;
     --t2:           #b4b4bd;
@@ -2507,7 +2512,7 @@ body.theme-glass.xhs-export-busy::before{
   border:3px solid transparent;background-clip:padding-box;
 }
 ::-webkit-scrollbar-thumb:hover{filter:brightness(0.88)}
-::selection{background:var(--bg-active);color:var(--t1)}
+::selection{background:var(--selection-bg,var(--bg-active));color:var(--t1)}
 
 #mode-bar,#statusbar{transition:opacity .4s ease}
 
