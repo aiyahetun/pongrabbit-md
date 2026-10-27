@@ -157,13 +157,20 @@ function setupContextMenu () {
       if (!node) return { zone: 'editor', mode: 'rich', kind: 'empty' }
       const tCtx = getRichTableCellContextFromNode(node) || getRichTableCellContext()
       if (tCtx) return { zone: 'editor', mode: 'rich', kind: 'table', richTable: tCtx }
-      const img = node.closest && node.closest('img')
+      const imgBlock = node.closest && node.closest('figure.image-block')
+      const img = imgBlock
+        ? imgBlock.querySelector('img')
+        : (node.closest && node.closest('img'))
       if (img && richEditor.contains(img)) {
-        return { zone: 'editor', mode: 'rich', kind: 'image', imgEl: img }
+        return { zone: 'editor', mode: 'rich', kind: 'image', imgEl: img, imageBlockEl: imgBlock || null }
       }
       const a = node.closest && node.closest('a[href]')
       if (a && richEditor.contains(a)) {
         return { zone: 'editor', mode: 'rich', kind: 'link', linkEl: a }
+      }
+      const diagram = node.closest && node.closest('.diagram-block')
+      if (diagram && richEditor.contains(diagram)) {
+        return { zone: 'editor', mode: 'rich', kind: 'diagram', diagramEl: diagram }
       }
       const pre = node.closest && node.closest('pre')
       if (pre && richEditor.contains(pre)) {
@@ -251,6 +258,7 @@ function setupContextMenu () {
       items.push({ sep: true })
       items.push(
         { id: 'img-replace', label: tt('ctx.imgReplace') },
+        { id: 'img-edit-alt', label: tt('ctx.imgEditAlt') },
         { id: 'img-copy-path', label: tt('ctx.imgPath') },
         { id: 'img-reveal', label: tt('ctx.imgReveal') },
         { id: 'img-delete', label: tt('ctx.imgDelete') }
@@ -287,9 +295,37 @@ function setupContextMenu () {
           { id: 'ins-image', label: tt('ctx.image') },
           { id: 'ins-link', label: tt('ctx.insLink') },
           { id: 'ins-hr', label: tt('ctx.hr') },
-          { id: 'ins-code', label: tt('ctx.code') }
+          { id: 'ins-code', label: tt('ctx.code') },
+          { id: 'ins-mermaid', label: tt('ctx.insMermaid') }
         ]
       })
+    }
+
+    if (c.kind === 'diagram' && !ro && !prev) {
+      items.push({ sep: true })
+      const diagramItems = [
+        { id: 'diagram-expand', label: tt('ctx.diagramExpand') },
+        { id: 'diagram-edit', label: tt('ctx.diagramEdit') },
+        { id: 'diagram-copy', label: tt('ctx.diagramCopySource') }
+      ]
+      const prefs = window.pongrabbitDiagramPrefs ? window.pongrabbitDiagramPrefs() : {}
+      const W = window.pongrabbitDiagramWidget
+      const srcEl = c.diagramEl && W
+        ? (c.diagramEl.querySelector('.diagram-source') || c.diagramEl)
+        : null
+      const srcText = srcEl
+        ? (c.diagramEl.querySelector('.diagram-source')?.value ||
+          c.diagramEl.querySelector('.diagram-view')?.textContent || '')
+        : ''
+      const FC = window.pongrabbitFlowchartEditor
+      if (prefs.flowchartWysiwyg && FC && FC.isFlowchartSource && FC.isFlowchartSource(srcText.trim())) {
+        diagramItems.push({ id: 'diagram-canvas', label: tt('ctx.diagramCanvas') })
+      }
+      if (prefs.openInLive) {
+        diagramItems.push({ id: 'diagram-live', label: tt('ctx.diagramOpenLive') })
+      }
+      diagramItems.push({ id: 'diagram-delete', label: tt('ctx.diagramDelete') })
+      items.push(...diagramItems)
     }
 
     return items
@@ -388,6 +424,7 @@ function setupContextMenu () {
       else document.execCommand('insertHorizontalRule')
     }
     else if (action === 'ins-code') insertCodeBlock()
+    else if (action === 'ins-mermaid') insertMermaidBlockAtCursor()
     else if (c.kind === 'table') {
       if (c.mode === 'rich' && c.richTable) {
         const t = c.richTable
@@ -414,6 +451,16 @@ function setupContextMenu () {
     }
     else if (c.kind === 'image') {
       if (action === 'img-replace') insertMarkdownImageAtCursor()
+      else if (action === 'img-edit-alt' && c.imgEl) {
+        const cur = c.imgEl.getAttribute('alt') || ''
+        const next = prompt(tt('ctx.imgEditAlt'), cur)
+        if (next != null) {
+          c.imgEl.setAttribute('alt', next)
+          recordRichHistory({ discrete: true })
+          setModified(true)
+          scheduleRender()
+        }
+      }
       else if (action === 'img-copy-path') {
         const src = c.imgEl ? (c.imgEl.getAttribute('data-md-src') || c.imgEl.getAttribute('src') || '') : (c.mdSrc || '')
         void navigator.clipboard.writeText(src)
@@ -426,7 +473,12 @@ function setupContextMenu () {
         }
       }
       else if (action === 'img-delete') {
-        if (c.imgEl) {
+        if (c.imageBlockEl) {
+          c.imageBlockEl.remove()
+          recordRichHistory()
+          setModified(true)
+          scheduleRender()
+        } else if (c.imgEl) {
           c.imgEl.remove()
           recordRichHistory()
           setModified(true)
@@ -483,6 +535,48 @@ function setupContextMenu () {
           setModified(true)
           scheduleRender()
         }
+      }
+    }
+    else if (c.kind === 'diagram') {
+      const W = window.pongrabbitDiagramWidget
+      if (action === 'diagram-expand' && W && c.diagramEl && W.openExpandForBlock) {
+        W.openExpandForBlock(c.diagramEl)
+      } else if (action === 'diagram-edit' && W && c.diagramEl) {
+        void Promise.resolve(W.editDiagramBlock(c.diagramEl)).then(changed => {
+          if (changed) {
+            recordRichHistory({ discrete: true })
+            setModified(true)
+            scheduleRender()
+          }
+        })
+      } else if (action === 'diagram-copy' && W && c.diagramEl) {
+        const ta = c.diagramEl.querySelector('.diagram-source')
+        const text = ta
+          ? ta.value
+          : (c.diagramEl.querySelector('.diagram-view')?.textContent || '')
+        void navigator.clipboard.writeText(text.replace(/\n$/, ''))
+      } else if (action === 'diagram-live' && W && c.diagramEl) {
+        const prefs = window.pongrabbitDiagramPrefs ? window.pongrabbitDiagramPrefs() : {}
+        if (!prefs.openInLive) return
+        const ta = c.diagramEl.querySelector('.diagram-source')
+        const text = ta
+          ? ta.value
+          : (c.diagramEl.querySelector('.diagram-view')?.textContent || '')
+        const live = window.pongrabbitMermaidLive
+        if (live && live.openInMermaidLive) void live.openInMermaidLive(text.replace(/\n$/, ''))
+      } else if (action === 'diagram-canvas' && W && c.diagramEl && W.openCanvasForBlock) {
+        void W.openCanvasForBlock(c.diagramEl).then(changed => {
+          if (changed) {
+            recordRichHistory({ discrete: true })
+            setModified(true)
+            scheduleRender()
+          }
+        })
+      } else if (action === 'diagram-delete' && c.diagramEl) {
+        c.diagramEl.remove()
+        recordRichHistory({ discrete: true })
+        setModified(true)
+        scheduleRender()
       }
     }
   }

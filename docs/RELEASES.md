@@ -13,7 +13,17 @@
 | **Windows** | `pongrabbit-MD Setup 1.0.3.exe` | NSIS 安装向导，可选安装目录。 |
 | **Windows（便携）** | `pongrabbit-MD 1.0.3.exe` | 单文件便携版，无需安装（若已提供）。 |
 
-历史版本说明见 [`CHANGELOG.md`](../CHANGELOG.md)；各版 Release 正文见 `docs/RELEASE_NOTES_vX.Y.Z.md`（最新 [v1.0.29](./RELEASE_NOTES_v1.0.29.md)）。
+历史版本说明见 [`CHANGELOG.md`](../CHANGELOG.md)；各版 Release 正文见 `docs/RELEASE_NOTES_vX.Y.Z.md`（含 Mermaid 草案 [v1.0.37](./RELEASE_NOTES_v1.0.37.md)）。
+
+### 含 Mermaid 图表功能的发版自检（v1.0.37+）
+
+在 **`mobimark_source/mobimark`**：
+
+```bash
+npm run selfcheck-mermaid
+npm run smoke-mermaid
+node scripts/selfcheck-xhs-export-audit.js
+```
 
 - **架构**：正式 Release 的 Mac 包为 **Universal（x64 + arm64）**，Intel 与 M 系列均可直接运行。本地仅测 M 芯片时可执行 `npm run build-mac-arm64`。
 - **未签名 / 未公证**：macOS 首次打开若被拦截，请对应用 **右键 → 打开**；Windows 可能出现 SmartScreen 提示，选「仍要运行」。

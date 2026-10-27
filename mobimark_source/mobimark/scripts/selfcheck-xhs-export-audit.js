@@ -151,6 +151,29 @@ const RISKS = [
     severity: 'P2',
     mitigated: /kind:\s*'page-break'/.test(appSrc) && /child\.tagName === 'HR'/.test(appSrc),
     note: '独立行 --- 渲染为 hr，强制换页'
+  },
+  {
+    id: 'mermaid-not-fence-line',
+    name: 'Mermaid 不得按 fence-line 拆行',
+    severity: 'P0',
+    mitigated: /kind:\s*'mermaid'/.test(appSrc) && /xhsPushMermaidUnit/.test(appSrc),
+    note: '已渲 .mermaid / diagram-block 作为原子分页单元'
+  },
+  {
+    id: 'mermaid-pre-explode',
+    name: '已渲 mermaid 不得进 pre-line 拆分',
+    severity: 'P0',
+    mitigated: /pre\.closest\('\.mermaid/.test(appSrc) &&
+      /=== 'mermaid'/.test(appSrc),
+    note: 'xhsExplodeRealPreForPagination 跳过 mermaid'
+  },
+  {
+    id: 'preview-export-html-parity',
+    name: '预览与 exportHtml 同一 prepare 路径',
+    severity: 'P1',
+    mitigated: /async function applyMarkedHtmlPipeline/.test(appSrc) &&
+      /applyMarkedHtmlPipeline\(wrap/.test(appSrc),
+    note: '含 Mermaid promote + render'
   }
 ]
 

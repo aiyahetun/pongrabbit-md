@@ -8,7 +8,7 @@
 
 本文档记录 pongrabbit-MD **编辑体验、模式切换、超链与系统关联打开**相关 Bug（含回归），含根因、修复版本与验收状态。
 
-**当前稳定版**：1.0.34
+**当前稳定版**：1.0.36（含 Mermaid 图表；验收见 [MERMAID_ACCEPTANCE.md](./MERMAID_ACCEPTANCE.md)）
 
 ---
 
@@ -32,6 +32,7 @@
 | ED-004 | P1 | 表格可视化编辑后切换源码再回可视化，内容错行/重复 | ≤1.0.33 | 1.0.34 | **已验收** |
 | ED-005 | P1 | 可视化 ↔ 源码切换或撤销（Ctrl+Z）长时间卡顿 | ≤1.0.33 | 1.0.34 | **已验收** |
 | ED-006 | P2 | 状态栏字数 / 字符统计规则不清晰 | ≤1.0.33 | 1.0.34 | **已验收** |
+| ED-007 | P2 | Mermaid 渲染中切换主题/模式偶发旧图闪回 | 1.0.37 | — | **观测中** |
 
 ---
 
@@ -67,6 +68,14 @@
   - 渲染器与主进程统一 `normalizeLinkHref` / 路径解码；
   - CSS 为 `#rich-editor a`、`#preview-content a` 显式 `pointer-events: auto`。
 - **验收**：用户确认 v1.0.29 **验收通过**（2026-09-21）。
+
+---
+
+### ED-007 Mermaid 渲染中切换视图（观测）
+
+- **现象**：预览或可视化含多段 Mermaid 时，快速切换主题或「预览 ↔ 可视化」，偶发短暂显示旧 SVG 或空白。
+- **缓解**（v1.0.37）：`beginPreviewRender` / `isPreviewRenderStale` 代际丢弃过期 DOM 写入；PDF/HTML 导出等待 `waitForMermaidIdle`。
+- **验收**：打开 `fixtures/diagrams/flowchart-layers.md` 或 `xciv` 产品文档，切换主题与四模式各 5 次无明显错图；若仍复现请记录步骤。
 
 ---
 

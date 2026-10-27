@@ -168,8 +168,15 @@ check('close prevented until renderer confirms', /win\.on\('close'[\s\S]*?win-cl
 check('renderer requestWindowClose', appSrc.includes('function requestWindowClose'))
 check('default auto-save interval 120s', /autoSaveIntervalSec:\s*120/.test(mainSrc))
 
+// ── Mermaid 预览代际 ───────────────────────────────────────
+console.log('\n[6] Mermaid preview generation')
+check('beginPreviewRender', /function beginPreviewRender/.test(appSrc))
+check('isPreviewRenderStale', /function isPreviewRenderStale/.test(appSrc))
+check('renderPreview uses previewSeq', /const previewSeq=beginPreviewRender\(\)/.test(appSrc))
+check('applyMarkedHtmlPipeline checks stale', /isPreviewRenderStale\(previewSeq\)/.test(appSrc))
+
 // ── 语法检查 ───────────────────────────────────────────────
-console.log('\n[6] Syntax check')
+console.log('\n[7] Syntax check')
 function syntaxOk (file) {
   try {
     require('node:module').createRequire(file)(file)

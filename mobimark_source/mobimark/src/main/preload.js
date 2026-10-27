@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld('mobiAPI', {
   workspaceReadFile: (rel) => ipcRenderer.invoke('workspace-read-file', rel),
   importMarkdownImage: (opts) => ipcRenderer.invoke('import-markdown-image', opts),
   resolveMarkdownImage: (mdPath, src) => ipcRenderer.invoke('resolve-markdown-image', mdPath, src),
+  markdownImageDataUrl: (mdPath, src) => ipcRenderer.invoke('markdown-image-data-url', mdPath, src),
   resolveMarkdownLink: (mdPath, href) => ipcRenderer.invoke('resolve-markdown-link', mdPath, href),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   openEula: () => ipcRenderer.invoke('open-eula'),

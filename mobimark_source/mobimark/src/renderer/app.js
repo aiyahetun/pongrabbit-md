@@ -62,6 +62,14 @@ let _editorSyncing=false
 let _richSyncedMd=null
 /** 预览区已渲染的 Markdown，避免重复 marked + hljs */
 let _previewRenderedMd=null
+let _previewRenderSeq=0
+function beginPreviewRender(){
+  _previewRenderSeq+=1
+  return _previewRenderSeq
+}
+function isPreviewRenderStale(seq){
+  return seq!=null&&seq!==_previewRenderSeq
+}
 /** 目录侧栏已解析的 Markdown 源 */
 let _outlineMdSource=''
 let renderTimer=null
@@ -106,6 +114,14 @@ let i18nState = {
 function tt (key, vars) {
   return window.i18nAPI ? window.i18nAPI.t(key, vars) : key
 }
+
+function pongrabbitDiagramPrefs () {
+  return {
+    openInLive: cfg.diagramOpenInLive === true,
+    flowchartWysiwyg: cfg.diagramFlowchartWysiwyg === true
+  }
+}
+window.pongrabbitDiagramPrefs = pongrabbitDiagramPrefs
 
 function errText (code) {
   if (!code) return ''
@@ -182,6 +198,7 @@ async function init() {
   setupModeTabs()
   setupRichEditor()
   setupLinkClickHandlers()
+  setupDiagramLightboxHandlers()
   setupMdToolbar()
   setupTopActions()
   setupStatusBar()
@@ -214,6 +231,7 @@ async function init() {
   if (cfg.pendingContent) {
     mdEditor.value = cfg.pendingContent
     richEditor.innerHTML = md2html(cfg.pendingContent)
+    upgradeRichEditorBlocks()
     attachCodeBlockCopyButtons(richEditor)
     prepareRichLinksForEditing()
     window.mobiAPI.saveConfig({ pendingContent: '' })
@@ -328,6 +346,16 @@ function prepareRichLinksForEditing () {
   }
 }
 
+function upgradeRichEditorBlocks () {
+  if (window.pongrabbitImageWidget) {
+    window.pongrabbitImageWidget.upgradeImagesInRichEditor(richEditor)
+  }
+  if (window.pongrabbitDiagramWidget) {
+    window.pongrabbitDiagramWidget.upgradeMermaidInRichEditor(richEditor)
+    void window.pongrabbitMermaidRuntime?.renderMermaidIn(richEditor)
+  }
+}
+
 function hasRichContentChanged () {
   return normalizeRichHtmlForCompare(richEditor.innerHTML) !== _richHtmlBaseline
 }
@@ -397,6 +425,7 @@ function applyOpenedDocument (r) {
   _mdEdited = false
   _wysiwygEdited = false
   richEditor.innerHTML = md2html(content)
+  upgradeRichEditorBlocks()
   attachCodeBlockCopyButtons(richEditor)
   prepareRichLinksForEditing()
   captureRichHtmlBaseline()
@@ -563,6 +592,10 @@ function syncUI(c){
   if (ast) ast.checked = c.autoSaveEnabled !== false
   const pjt=$('preview-justify-toggle')
   if(pjt)pjt.checked=!!c.previewJustify
+  const dol=$('diagram-open-in-live-toggle')
+  if(dol)dol.checked=c.diagramOpenInLive===true
+  const dfw=$('diagram-flowchart-wysiwyg-toggle')
+  if(dfw)dfw.checked=c.diagramFlowchartWysiwyg===true
   $('blur-slider').value=c.glassBlur ?? 28
   $('blur-display').textContent=($('blur-slider').value)+'px'
   const ov=c.glassOverlay!==undefined?c.glassOverlay:2
@@ -604,6 +637,9 @@ function applyTheme(theme, save=true) {
   }
   refreshGlassEffects()
   syncGlassContrastSelectAvailability()
+  _previewRenderedMd=null
+  beginPreviewRender()
+  if(editMode==='preview'||editMode==='split')scheduleRender()
   if(save) save_cfg({theme})
 }
 async function setTheme(t){
@@ -1232,6 +1268,7 @@ function syncEditorsFromMd (plainOffset, { force = false } = {}) {
   const richScroll = richEditor.scrollTop
   const richFocused = document.activeElement === richEditor
   richEditor.innerHTML = md2html(md)
+  upgradeRichEditorBlocks()
   attachCodeBlockCopyButtons(richEditor)
   prepareRichLinksForEditing()
   captureRichHtmlBaseline()
@@ -1483,6 +1520,14 @@ function setupRichEditor(){
     updateFmtBtns()
   })
   richEditor.addEventListener('keyup',()=>{_lastSrc='wysiwyg';updateStatus();updateFmtBtns()})
+  richEditor.addEventListener('pongrabbit-diagram-changed',()=>{
+    markWysiwygEdited()
+    recordRichHistory({ discrete: true })
+    setModified(true)
+    scheduleRender()
+    updateStatus()
+    if(editMode==='split')syncEditorsFromWysiwyg()
+  })
 
   const richToolbar = $('rich-toolbar')
   if (richToolbar) {
@@ -1506,6 +1551,8 @@ function setupRichEditor(){
   $('r-quote').onclick=()=>wrapTag('blockquote')
   $('r-code').onclick=()=>wrapTag('code')
   $('r-codeblock').onclick=()=>insertCodeBlock()
+  const rMermaid=$('r-mermaid')
+  if(rMermaid)rMermaid.onclick=()=>insertMermaidBlockAtCursor()
   $('r-link').onclick=()=>showLinkDialog()
   $('r-image').onclick=()=>insertMarkdownImageAtCursor()
   $('r-table').onclick=()=>showTableDialog()
@@ -1555,6 +1602,28 @@ function insertCodeBlock(){
   scheduleRender()
 }
 
+function insertMermaidBlockAtCursor(){
+  if(editsBlocked())return
+  const W=window.pongrabbitDiagramWidget
+  if(!W)return
+  const src=W.defaultMermaidSource()
+  if(editMode==='markdown'||(editMode==='split'&&isMdFocused())){
+    insertMd('\n\n```mermaid\n'+src+'\n```\n\n')
+    return
+  }
+  if(editMode==='preview')return
+  const block=W.buildDiagramBlock(src)
+  document.execCommand('insertHTML',false,block.outerHTML)
+  const blocks=richEditor.querySelectorAll('.diagram-block')
+  const inserted=blocks.length?blocks[blocks.length-1]:null
+  if(inserted)void W.refreshDiagramBlock(inserted)
+  markWysiwygEdited()
+  recordRichHistory({ discrete: true })
+  setModified(true)
+  scheduleRender()
+  updateStatus()
+}
+
 async function copyTextToClipboard (text) {
   try {
     await navigator.clipboard.writeText(text)
@@ -1575,6 +1644,9 @@ async function copyTextToClipboard (text) {
 function attachCodeBlockCopyButtons (root) {
   if (!root) return
   root.querySelectorAll('pre').forEach(pre => {
+    const codeEl = pre.querySelector('code')
+    const lang = codeEl ? (codeEl.className.match(/language-([\w-]+)/i) || [])[1] : ''
+    if (lang && lang.toLowerCase() === 'mermaid') return
     if (pre.querySelector(':scope > .code-copy-btn')) return
     const btn = document.createElement('button')
     btn.type = 'button'
@@ -1683,6 +1755,12 @@ function setupMdToolbar(){
   $('fmt-quote').onclick=()=>prefixMd('> ')
   $('fmt-code').onclick=()=>wrapMd('`','`')
   $('fmt-codeblock').onclick=()=>wrapMd('\n```\n','\n```\n')
+  const fmtMermaid=$('fmt-mermaid')
+  if(fmtMermaid)fmtMermaid.onclick=()=>{
+    const W=window.pongrabbitDiagramWidget
+    const src=W?W.defaultMermaidSource():'flowchart LR\n  A --> B'
+    insertMd('\n\n```mermaid\n'+src+'\n```\n\n')
+  }
   $('fmt-link').onclick=()=>showLinkDialog()
   $('fmt-image').onclick=()=>insertMarkdownImageAtCursor()
   $('fmt-ul').onclick=()=>prefixMd('- ')
@@ -1924,7 +2002,23 @@ async function exportHtml(){
   }
   try {
     await renderPreview()
-    const r = await window.mobiAPI.exportHtml({html:previewEl.innerHTML,title:currentFile?bn(currentFile).replace(/\.md$/i,''):tt('ui.untitledShort')})
+    if (window.pongrabbitMermaidRuntime) {
+      await window.pongrabbitMermaidRuntime.waitForMermaidIdle()
+    }
+    const bodyHtml = window.pongrabbitExportPreview
+      ? await window.pongrabbitExportPreview.buildExportBodyHtmlAsync(previewEl, {
+        mdFilePath: currentFile || '',
+        imageDataUrl: (mdPath, src) => window.mobiAPI.markdownImageDataUrl(mdPath, src)
+      })
+      : previewEl.innerHTML
+    const headExtra = window.pongrabbitExportPreview
+      ? window.pongrabbitExportPreview.EXPORT_HEAD_STYLE
+      : ''
+    const r = await window.mobiAPI.exportHtml({
+      html: bodyHtml,
+      headExtra,
+      title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : tt('ui.untitledShort')
+    })
     if (r && r.error) alert(errText(r.error))
   } catch (e) {
     console.error(e)
@@ -1942,6 +2036,9 @@ async function exportPdf(){
       return
     }
     await renderPreview()
+    if (window.pongrabbitMermaidRuntime) {
+      await window.pongrabbitMermaidRuntime.waitForMermaidIdle()
+    }
     const r = await window.mobiAPIPdf.exportPdf({
       html: previewEl.innerHTML,
       title: currentFile ? bn(currentFile).replace(/\.md$/i, '') : tt('ui.untitledShort'),
@@ -2008,6 +2105,47 @@ function updateStatus(){
 }
 
 // ════ 预览渲染 ══════════════════════════════════════════════
+function markdownSrcForMarked (md) {
+  return String(md || '')
+    .replace(/\uFF40/g, '`')
+    .replace(/^([ \t]*[-*+] )\[([ xX])\] /gm, (_, b, c) => `${b}<input type="checkbox" ${c !== ' ' ? 'checked' : ''}> `)
+}
+
+async function applyMarkedHtmlPipeline (container, md, { previewSeq } = {}) {
+  if (!container || !window.marked) return false
+  window.marked.setOptions({ breaks: true, gfm: true })
+  container.innerHTML = window.marked.parse(markdownSrcForMarked(md))
+  if (isPreviewRenderStale(previewSeq)) return false
+  if (window.pongrabbitFenceBlocks) {
+    window.pongrabbitFenceBlocks.promoteMermaidFencesInElement(container)
+  }
+  if (window.hljsAPI) {
+    for (const blk of container.querySelectorAll('pre code')) {
+      const lang = (blk.className.match(/language-([\w-]+)/i) || [])[1] || ''
+      if (lang.toLowerCase() === 'mermaid') continue
+      try {
+        const r = await window.hljsAPI.highlight(blk.textContent, lang)
+        blk.innerHTML = r.value
+        blk.classList.add('hljs')
+      } catch (_) {}
+    }
+  }
+  if (isPreviewRenderStale(previewSeq)) return false
+  for (const img of container.querySelectorAll('img')) {
+    const s = img.getAttribute('src')
+    if (!s || /^https?:\/\//i.test(s)) continue
+    try {
+      const resolved = await window.mobiAPI.resolveMarkdownImage(currentFile || '', s)
+      if (resolved) img.setAttribute('src', resolved)
+    } catch (_) {}
+  }
+  if (isPreviewRenderStale(previewSeq)) return false
+  if (window.pongrabbitMermaidRuntime) {
+    await window.pongrabbitMermaidRuntime.renderMermaidIn(container)
+  }
+  return !isPreviewRenderStale(previewSeq)
+}
+
 function scheduleOutlineRefresh () {
   clearTimeout(outlineTimer)
   outlineTimer = setTimeout(() => refreshOutline(), 120)
@@ -2068,6 +2206,31 @@ function allowedOpenExtForLink (filePath) {
   return ext === '.md' || ext === '.markdown' || ext === '.txt' || READONLY_CODE_EXTS.has(ext)
 }
 
+function setupDiagramLightboxHandlers () {
+  const LB = window.pongrabbitDiagramLightbox
+  if (!LB || !LB.open) return
+  function onDiagramActivate (e) {
+    const inPreview = previewEl.contains(e.target)
+    const inRich = richEditor.contains(e.target)
+    if (!inPreview && !inRich) return
+    if (inPreview && editMode !== 'preview' && editMode !== 'split') return
+    if (inRich && editMode !== 'wysiwyg' && editMode !== 'split') return
+    const block = e.target.closest && e.target.closest('.diagram-block')
+    const mermaidEl = block
+      ? (block.querySelector('.diagram-view') || block)
+      : (e.target.closest && e.target.closest('.mermaid'))
+    if (!mermaidEl || !mermaidEl.querySelector('svg')) return
+    if (e.target.closest('a, button, .diagram-block-toolbar')) return
+    if (e.type === 'dblclick' || (e.type === 'click' && inPreview)) {
+      e.preventDefault()
+      e.stopPropagation()
+      LB.open(mermaidEl)
+    }
+  }
+  previewEl.addEventListener('dblclick', onDiagramActivate, true)
+  previewEl.addEventListener('click', onDiagramActivate, true)
+}
+
 function setupLinkClickHandlers () {
   function onLinkActivate (e) {
     const a = e.target.closest && e.target.closest('a[href]')
@@ -2091,24 +2254,10 @@ async function renderPreview(){
   if(!window.marked){previewEl.innerHTML='<div style="padding:40px;opacity:.4">'+tt('preview.loading')+'</div>';return}
   const md=getCurrentMd()
   if (_previewRenderedMd === md && previewEl.innerHTML.trim()) return
+  const previewSeq=beginPreviewRender()
   try{
-    window.marked.setOptions({breaks:true,gfm:true})
-    const src=md.replace(/^([ \t]*[-*+] )\[([ xX])\] /gm,(_,b,c)=>`${b}<input type="checkbox" ${c!=' '?'checked':''}> `)
-    previewEl.innerHTML=window.marked.parse(src)
-    if(window.hljsAPI){
-      for(const blk of previewEl.querySelectorAll('pre code')){
-        const lang=(blk.className.match(/language-([\w-]+)/)||[])[1]||''
-        try{const r=await window.hljsAPI.highlight(blk.textContent,lang);blk.innerHTML=r.value;blk.classList.add('hljs')}catch(e){}
-      }
-    }
-    for(const img of previewEl.querySelectorAll('img')){
-      const s=img.getAttribute('src')
-      if(!s||/^https?:\/\//i.test(s))continue
-      try{
-        const resolved=await window.mobiAPI.resolveMarkdownImage(currentFile||'',s)
-        if(resolved)img.setAttribute('src',resolved)
-      }catch(_){}
-    }
+    const ok=await applyMarkedHtmlPipeline(previewEl,md,{previewSeq})
+    if(!ok||isPreviewRenderStale(previewSeq))return
     previewEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
       cb.addEventListener('change',()=>{cb.checked=!cb.checked})
     })
@@ -2472,7 +2621,15 @@ function setupDocOutline () {
 // ════ HTML ↔ Markdown ════════════════════════════════════════
 function md2html(md){
   if(!window.marked)return '<p>'+md+'</p>'
-  try{return window.marked.parse(md)}catch(e){return '<pre>'+escHtml(md)+'</pre>'}
+  try{
+    window.marked.setOptions({ breaks: true, gfm: true })
+    const html=window.marked.parse(md)
+    if(!window.pongrabbitFenceBlocks)return html
+    const wrap=document.createElement('div')
+    wrap.innerHTML=html
+    window.pongrabbitFenceBlocks.promoteMermaidFencesInElement(wrap)
+    return wrap.innerHTML
+  }catch(e){return '<pre>'+escHtml(md)+'</pre>'}
 }
 
 function joinMdBlocks (parts) {
@@ -2494,7 +2651,13 @@ function nodeToMd(node){
   const tag=node.tagName.toLowerCase()
   const inn=()=>Array.from(node.childNodes).map(nodeToMd).join('')
   if ((tag === 'div' || tag === 'body') && node !== richEditor) {
+    if (tag === 'div' && node.classList && node.classList.contains('diagram-block') && window.pongrabbitDiagramWidget) {
+      return window.pongrabbitDiagramWidget.diagramBlockToMd(node)
+    }
     return joinMdBlocks(Array.from(node.childNodes).map(nodeToMd))
+  }
+  if (tag === 'figure' && node.classList && node.classList.contains('image-block') && window.pongrabbitImageWidget) {
+    return window.pongrabbitImageWidget.imageBlockToMd(node)
   }
   switch(tag){
     case 'h1':return '# '+inn().trim()
@@ -2508,7 +2671,13 @@ function nodeToMd(node){
     case 'u': return inn()
     case 's':case 'del':return '~~'+inn()+'~~'
     case 'code':return node.parentNode?.tagName?.toLowerCase()==='pre'?inn():'`'+inn()+'`'
-    case 'pre': return '```\n'+node.textContent.replace(/\n$/,'')+'\n```'
+    case 'pre':{
+      const codeEl=node.querySelector('code')
+      const lang=codeEl?(codeEl.className.match(/language-([\w-]+)/i)||[])[1]:''
+      const body=(codeEl?codeEl.textContent:node.textContent).replace(/\n$/,'')
+      if(lang)return '```'+lang+'\n'+body+'\n```'
+      return '```\n'+body+'\n```'
+    }
     case 'blockquote':return inn().trim().split('\n').map(l=>'> '+l).join('\n')
     case 'hr':return '---'
     case 'a': return '['+inn()+']('+node.getAttribute('href')+')'
@@ -4053,31 +4222,8 @@ function splitMdForXhsExport (md, readability, paginationMode = 'smart') {
 /** 与预览一致的 Markdown → HTML（hljs、本地图片路径），不写入预览区 */
 async function mdFragmentToExportableHtml (md) {
   if (!window.marked) throw new Error('marked 未加载')
-  window.marked.setOptions({ breaks: true, gfm: true })
-  /* 全角重音符 U+FF40 常被误作反引号，会导致行内 code 不闭合、导出出现字面 ` 或整段被当成 code */
-  const src = String(md || '')
-    .replace(/\uFF40/g, '`')
-    .replace(/^([ \t]*[-*+] )\[([ xX])\] /gm, (_, b, c) => `${b}<input type="checkbox" ${c !== ' ' ? 'checked' : ''}> `)
   const wrap = document.createElement('div')
-  wrap.innerHTML = window.marked.parse(src)
-  if (window.hljsAPI) {
-    for (const blk of wrap.querySelectorAll('pre code')) {
-      const lang = (blk.className.match(/language-([\w-]+)/) || [])[1] || ''
-      try {
-        const r = await window.hljsAPI.highlight(blk.textContent, lang)
-        blk.innerHTML = r.value
-        blk.classList.add('hljs')
-      } catch (_) {}
-    }
-  }
-  for (const img of wrap.querySelectorAll('img')) {
-    const s = img.getAttribute('src')
-    if (!s || /^https?:\/\//i.test(s)) continue
-    try {
-      const resolved = await window.mobiAPI.resolveMarkdownImage(currentFile || '', s)
-      if (resolved) img.setAttribute('src', resolved)
-    } catch (_) {}
-  }
+  await applyMarkedHtmlPipeline(wrap, md, {})
   return wrap.innerHTML
 }
 
@@ -4337,12 +4483,20 @@ function xhsPushBlockUnit (units, surfaceTop, el) {
   units.push({ kind: 'block', el, ...m })
 }
 
+function xhsPushMermaidUnit (units, surfaceTop, el) {
+  const m = xhsMeasureEl(surfaceTop, el)
+  units.push({ kind: 'mermaid', el, ...m })
+}
+
 /**
  * 多行语法高亮 pre 在分页前拆成行盒（导出专用；分页后可合并，避免整段 pre 超高裁切）。
  */
 function xhsExplodeRealPreForPagination (surface) {
   for (const pre of Array.from(surface.querySelectorAll('pre'))) {
+    if (pre.closest('.mermaid, .diagram-block')) continue
     const code = pre.querySelector('code') || pre
+    const lang = code.className ? (code.className.match(/language-([\w-]+)/i) || [])[1] : ''
+    if (lang && lang.toLowerCase() === 'mermaid') continue
     const raw = (code.textContent || '').replace(/\r\n/g, '\n')
     const text = raw.replace(/^\n+/, '').replace(/\n+$/, '')
     const lines = text.length ? text.split('\n') : ['']
@@ -4684,6 +4838,8 @@ function xhsSubdivideOversizedUnits (units, maxUnitH, forceCharBudget) {
       out.push(...xhsExpandListItemUnits(u.itemEl, u.sourceList, 0, maxUnitH, u.height, forceCharBudget))
     } else if (u.kind === 'block') {
       out.push(...xhsExpandBlockUnits(u.el, 0, maxUnitH, u.height, forceCharBudget))
+    } else if (u.kind === 'mermaid') {
+      out.push(u)
     } else {
       out.push(u)
     }
@@ -4773,6 +4929,24 @@ async function xhsEnsureListItemUnitsFit (unit, styleId, fontId, readability, ma
     return verified
   }
   return [xhsTagUnitLayoutH(unit, h)]
+}
+
+async function xhsEnsureMermaidUnitsFit (unit, styleId, fontId, readability, maxLayoutH) {
+  const h = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  if (h <= maxLayoutH) return [xhsTagUnitLayoutH(unit, h)]
+  const el = unit.el
+  if (el) {
+    const svg = el.querySelector('svg')
+    if (svg) {
+      svg.style.maxHeight = Math.floor(maxLayoutH * 0.92) + 'px'
+      svg.style.width = 'auto'
+      svg.style.maxWidth = '100%'
+      el.style.overflow = 'hidden'
+    }
+  }
+  const h2 = await xhsMeasureIsolatedUnitHeight(unit, styleId, fontId, readability)
+  xhsExportSplitNoticeCount++
+  return [xhsTagUnitLayoutH(unit, Math.min(h2, maxLayoutH))]
 }
 
 async function xhsEnsureBlockUnitsFit (unit, styleId, fontId, readability, maxLayoutH, maxUnitH) {
@@ -4869,6 +5043,9 @@ async function xhsEnsureUnitFitsIsolation (unit, styleId, fontId, readability, m
   }
   if (unit.kind === 'blockquote-part') {
     return xhsEnsureBlockquotePartUnitsFit(unit, styleId, fontId, readability, maxLayoutH, maxUnitH)
+  }
+  if (unit.kind === 'mermaid') {
+    return xhsEnsureMermaidUnitsFit(unit, styleId, fontId, readability, maxLayoutH)
   }
   if (unit.kind === 'fence-line' || unit.kind === 'pre-line') {
     return xhsEnsureLineUnitFits(unit, styleId, fontId, readability, maxLayoutH)
@@ -5115,6 +5292,11 @@ function xhsFlattenPaginationUnits (surface, maxUnitH) {
         const m = xhsMeasureEl(surfaceTop, part)
         units.push({ kind: 'blockquote-part', sourceBq: child, partEl: part, ...m })
       }
+    } else if (child.classList && (child.classList.contains('mermaid') || child.classList.contains('diagram-block'))) {
+      const target = child.classList.contains('diagram-block')
+        ? (child.querySelector('.mermaid, .diagram-view') || child)
+        : child
+      xhsPushMermaidUnit(units, surfaceTop, target)
     } else {
       units.push(...xhsExpandBlockUnits(child, surfaceTop, rowBudget))
     }
@@ -5206,6 +5388,9 @@ function xhsMaterializePageUnits (units) {
         bqBuf = { sourceBq: u.sourceBq, parts: [] }
       }
       bqBuf.parts.push(u.partEl)
+    } else if (u.kind === 'mermaid') {
+      flushAll()
+      nodes.push(u.el)
     } else {
       flushAll()
       nodes.push(u.el)
@@ -6440,11 +6625,16 @@ async function insertMarkdownImageAtCursor(){
     return
   }
   if(editMode==='preview')return
-  const img=document.createElement('img')
-  img.setAttribute('src',r.fileUrl)
-  img.setAttribute('alt','')
-  img.setAttribute('data-md-src',r.mdRel)
-  document.execCommand('insertHTML',false,img.outerHTML)
+  const block = window.pongrabbitImageWidget
+    ? window.pongrabbitImageWidget.buildImageBlock(r.fileUrl, r.mdRel, '')
+    : (() => {
+      const img = document.createElement('img')
+      img.setAttribute('src', r.fileUrl)
+      img.setAttribute('alt', '')
+      img.setAttribute('data-md-src', r.mdRel)
+      return img
+    })()
+  document.execCommand('insertHTML', false, block.outerHTML)
   markWysiwygEdited()
   recordRichHistory({ discrete: true })
   setModified(true)
@@ -6487,6 +6677,23 @@ function setupSettingsPanel(){
       cfg.autoSaveEnabled = on
       void save_cfg({ autoSaveEnabled: on })
       if (cfg._restartAutoSave) cfg._restartAutoSave()
+    }
+  }
+  const dol = $('diagram-open-in-live-toggle')
+  if (dol) {
+    dol.onchange = function () {
+      cfg.diagramOpenInLive = !!this.checked
+      void save_cfg({ diagramOpenInLive: cfg.diagramOpenInLive })
+      if (window.pongrabbitDiagramWidget && window.pongrabbitDiagramWidget.refreshAllDiagramToolbars) {
+        window.pongrabbitDiagramWidget.refreshAllDiagramToolbars(richEditor)
+      }
+    }
+  }
+  const dfw = $('diagram-flowchart-wysiwyg-toggle')
+  if (dfw) {
+    dfw.onchange = function () {
+      cfg.diagramFlowchartWysiwyg = !!this.checked
+      void save_cfg({ diagramFlowchartWysiwyg: cfg.diagramFlowchartWysiwyg })
     }
   }
   $('btn-pick-bg').onclick=async()=>{

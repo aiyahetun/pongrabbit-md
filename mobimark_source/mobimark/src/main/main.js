@@ -208,6 +208,10 @@ function defaultConfig () {
     xhsExportReadability: 'standard',
     /** 导出分页：smart | h2 | h2h3 */
     xhsExportPagination: 'smart',
+    /** 图块工具栏：允许在 mermaid.live 打开（源码经 URL 传递） */
+    diagramOpenInLive: false,
+    /** 实验：flowchart 编辑优先走 mermaid.live */
+    diagramFlowchartWysiwyg: false,
     locale: '',
     store: ''
   }
@@ -348,6 +352,67 @@ function workspaceRootResolved () {
     if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) return abs
   } catch (_) {}
   return null
+}
+
+/** @returns {{ kind: 'remote', href: string } | { kind: 'file', abs: string } | null} */
+function resolveMarkdownImageFile (mdFilePath, src) {
+  const s = String(src || '').trim()
+  if (!s) return null
+  if (/^https?:\/\//i.test(s)) return { kind: 'remote', href: s }
+  if (s.startsWith('file:')) {
+    try {
+      const p = fileURLToPath(s)
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) return { kind: 'file', abs: path.resolve(p) }
+    } catch (_) {}
+    return null
+  }
+  let base = null
+  if (mdFilePath) {
+    try {
+      base = path.dirname(path.resolve(mdFilePath))
+    } catch (_) {}
+  }
+  const wr = workspaceRootResolved()
+  if (!base && wr) base = wr
+  if (!base || !fs.existsSync(base)) return null
+  const combined = path.isAbsolute(s) ? path.resolve(s) : path.resolve(base, s)
+  try {
+    if (!fs.existsSync(combined) || !fs.statSync(combined).isFile()) return null
+    return { kind: 'file', abs: combined }
+  } catch (_) {
+    return null
+  }
+}
+
+const MARKDOWN_IMAGE_DATA_URL_MAX = 12 * 1024 * 1024
+
+function readImageFileAsDataUrl (abs) {
+  if (!abs || !fs.existsSync(abs)) return { error: 'not-found' }
+  let st
+  try {
+    st = fs.statSync(abs)
+  } catch (e) {
+    return { error: String(e.message) }
+  }
+  if (!st.isFile()) return { error: 'not-file' }
+  if (st.size > MARKDOWN_IMAGE_DATA_URL_MAX) return { error: 'too-large' }
+  const ext = path.extname(abs).toLowerCase()
+  const mime = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml'
+  }[ext]
+  if (!mime) return { error: 'unsupported-type' }
+  try {
+    const buf = fs.readFileSync(abs)
+    const b64 = buf.toString('base64')
+    return { dataUrl: `data:${mime};base64,${b64}` }
+  } catch (e) {
+    return { error: String(e.message) }
+  }
 }
 
 /** 工作区内相对路径（POSIX）；含 .. 或绝对段则返回 null */
@@ -1029,7 +1094,7 @@ ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-o
 
 ipcMain.handle('get-recent-files', () => [...(config.recentFiles || [])])
 
-ipcMain.handle('export-html', async (event, { html, title }) => {
+ipcMain.handle('export-html', async (event, { html, title, headExtra }) => {
   const denied = licenseDenied()
   if (denied) return denied
   const win = getWinFromEvent(event)
@@ -1040,7 +1105,8 @@ ipcMain.handle('export-html', async (event, { html, title }) => {
     filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
   })
   if (canceled || !filePath) return
-  const doc = `<!DOCTYPE html><html lang="${intlLocale(config.locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(String(title || ''))}</title></head><body>\n${html}\n</body></html>`
+  const extra = headExtra ? String(headExtra) : ''
+  const doc = `<!DOCTYPE html><html lang="${intlLocale(config.locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(String(title || ''))}</title>${extra}</head><body>\n${html}\n</body></html>`
   fs.writeFileSync(filePath, doc, 'utf8')
 })
 
@@ -1627,32 +1693,21 @@ ipcMain.handle('resolve-markdown-link', (_, mdFilePath, href) => {
 })
 
 ipcMain.handle('resolve-markdown-image', (_, mdFilePath, src) => {
-  const s = String(src || '').trim()
-  if (!s) return null
-  if (/^https?:\/\//i.test(s)) return s
-  if (s.startsWith('file:')) {
-    try {
-      const p = fileURLToPath(s)
-      if (fs.existsSync(p)) return pathToFileURL(p).href
-    } catch (_) {}
-    return s
-  }
-  let base = null
-  if (mdFilePath) {
-    try {
-      base = path.dirname(path.resolve(mdFilePath))
-    } catch (_) {}
-  }
-  const wr = workspaceRootResolved()
-  if (!base && wr) base = wr
-  if (!base || !fs.existsSync(base)) return null
-  const combined = path.isAbsolute(s) ? path.resolve(s) : path.resolve(base, s)
+  const hit = resolveMarkdownImageFile(mdFilePath, src)
+  if (!hit) return null
+  if (hit.kind === 'remote') return hit.href
   try {
-    if (!fs.existsSync(combined) || !fs.statSync(combined).isFile()) return null
-    return pathToFileURL(combined).href
+    return pathToFileURL(hit.abs).href
   } catch (_) {
     return null
   }
+})
+
+ipcMain.handle('markdown-image-data-url', (_, mdFilePath, src) => {
+  const hit = resolveMarkdownImageFile(mdFilePath, src)
+  if (!hit) return null
+  if (hit.kind === 'remote') return { external: hit.href }
+  return readImageFileAsDataUrl(hit.abs)
 })
 
 ipcMain.handle('hljs-highlight', async (_, code, lang) => {

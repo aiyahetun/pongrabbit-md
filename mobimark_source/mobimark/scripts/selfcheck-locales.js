@@ -61,6 +61,18 @@ if (missingZh.length) console.error('    缺少: ' + missingZh.join(', '))
 check('界面引用的键在英文包存在', missingEn.length === 0)
 if (missingEn.length) console.error('    缺少: ' + missingEn.join(', '))
 
+const manifestPath = path.join(root, 'src/shared/mermaid-i18n-manifest.json')
+if (fs.existsSync(manifestPath)) {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  const required = Array.isArray(manifest.requiredKeys) ? manifest.requiredKeys : []
+  const missManifestZh = required.filter(k => !zhKeys.has(k)).sort()
+  const missManifestEn = required.filter(k => !enKeys.has(k)).sort()
+  check('Mermaid manifest 键在中文包存在', missManifestZh.length === 0)
+  if (missManifestZh.length) console.error('    缺少: ' + missManifestZh.join(', '))
+  check('Mermaid manifest 键在英文包存在', missManifestEn.length === 0)
+  if (missManifestEn.length) console.error('    缺少: ' + missManifestEn.join(', '))
+}
+
 const licenseSrc = fs.readFileSync(path.join(root, 'src/main/license.js'), 'utf8')
 check('验签模块不含标价', !licenseSrc.includes('¥') && !/\$\d/.test(licenseSrc))
 check('验签模块不含网址', !licenseSrc.includes('http'))

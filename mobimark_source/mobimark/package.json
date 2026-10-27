@@ -10,7 +10,10 @@
     "build-mac": "electron-builder --mac --universal",
     "build-mac-arm64": "electron-builder --mac --arm64",
     "build-mac-universal": "electron-builder --mac --universal",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "bundle-mermaid": "node scripts/bundle-mermaid.js",
+    "selfcheck-mermaid": "node scripts/selfcheck-mermaid.js && node scripts/selfcheck-mermaid-roundtrip.js && node scripts/selfcheck-mermaid-dom-roundtrip.js && node scripts/selfcheck-mermaid-blocks.js && node scripts/selfcheck-mermaid-flowchart.js && node scripts/selfcheck-export-html-mermaid.js && node scripts/selfcheck-flowchart-layout.js",
+    "smoke-mermaid": "node scripts/smoke-mermaid-render.js"
   },
   "build": {
     "appId": "com.pongrabbit.md",
@@ -125,7 +128,9 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "esbuild": "^0.28.2",
+    "jsdom": "^25.0.1"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -136,6 +141,7 @@
     "font-smiley-sans": "^1.0.0",
     "highlight.js": "^11.11.1",
     "html2canvas": "^1.4.1",
-    "marked": "^11.2.0"
+    "marked": "^11.2.0",
+    "mermaid": "^11.4.0"
   }
 }

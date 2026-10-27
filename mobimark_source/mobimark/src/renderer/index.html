@@ -35,6 +35,15 @@
 <link rel="stylesheet" href="../../node_modules/highlight.js/styles/github.min.css"      id="hljs-light">
 <link rel="stylesheet" href="../../node_modules/highlight.js/styles/github-dark.min.css" id="hljs-dark" disabled>
 <script src="../../node_modules/marked/marked.min.js"></script>
+<script src="fence-blocks.js"></script>
+<script src="mermaid-runtime.js"></script>
+<script src="mermaid-live.js"></script>
+<script src="flowchart-layout.js"></script>
+<script src="flowchart-editor.js"></script>
+<script src="export-preview-html.js"></script>
+<script src="image-widget.js"></script>
+<script src="diagram-lightbox.js"></script>
+<script src="diagram-widget.js"></script>
 </head>
 <body class="theme-light" id="app-body">
 <div id="bg-layer"></div>
@@ -133,6 +142,7 @@
   <button type="button" class="fmt-btn" id="r-quote" data-i18n-title="fmt.quote" data-i18n-aria="fmt.quote" title="引用" aria-label="引用">❝</button>
   <button type="button" class="fmt-btn" id="r-code" data-i18n-title="fmt.code" data-i18n-aria="fmt.code" title="行内代码" aria-label="行内代码">`</button>
   <button type="button" class="fmt-btn" id="r-codeblock" data-i18n-title="fmt.codeBlock" data-i18n-aria="fmt.codeBlock" title="代码块" aria-label="代码块">&lt;/&gt;</button>
+  <button type="button" class="fmt-btn" id="r-mermaid" data-i18n-title="fmt.mermaid" data-i18n-aria="fmt.mermaid" title="插入图表（Mermaid）" aria-label="插入图表">◇</button>
   <button type="button" class="fmt-btn" id="r-link" data-i18n-title="fmt.link" data-i18n-aria="fmt.link" title="链接" aria-label="插入链接">🔗</button>
   <button type="button" class="fmt-btn" id="r-image" data-i18n-title="fmt.image" data-i18n-aria="fmt.image" title="插入图片" aria-label="插入图片">🖼</button>
   <button type="button" class="fmt-btn" id="r-table" data-i18n-title="fmt.table" data-i18n-aria="fmt.table" title="表格" aria-label="插入表格">▦</button>
@@ -156,6 +166,7 @@
   <button type="button" class="fmt-btn" id="fmt-quote" data-i18n="fmt.quoteShort" data-i18n-title="fmt.quote" data-i18n-aria="fmt.quote" title="引用" aria-label="引用">引用</button>
   <button type="button" class="fmt-btn" id="fmt-code" data-i18n="fmt.codeShort" data-i18n-title="fmt.code" data-i18n-aria="fmt.code" title="行内代码" aria-label="行内代码">代码</button>
   <button type="button" class="fmt-btn" id="fmt-codeblock" data-i18n="fmt.codeBlockShort" data-i18n-title="fmt.codeBlock" data-i18n-aria="fmt.codeBlock" title="代码块" aria-label="代码块">代码块</button>
+  <button type="button" class="fmt-btn" id="fmt-mermaid" data-i18n="fmt.mermaidShort" data-i18n-title="fmt.mermaid" data-i18n-aria="fmt.mermaid" title="插入图表" aria-label="图表">图表</button>
   <button type="button" class="fmt-btn" id="fmt-link" data-i18n="fmt.linkShort" data-i18n-title="fmt.link" data-i18n-aria="fmt.link" title="链接" aria-label="插入链接">链接</button>
   <button type="button" class="fmt-btn" id="fmt-image" data-i18n="fmt.imageShort" data-i18n-title="fmt.image" data-i18n-aria="fmt.image" title="插入图片" aria-label="插入图片">图片</button>
   <span class="fmt-pill-sep" aria-hidden="true"></span>
@@ -425,6 +436,19 @@
       <span class="toggle-track"></span><span data-i18n="settings.previewJustify">预览两端对齐</span>
     </label>
   </div>
+  <div class="panel-section" id="diagram-settings">
+    <div class="panel-label" data-i18n="fmt.mermaidShort">图表</div>
+    <label class="toggle-label">
+      <input type="checkbox" id="diagram-open-in-live-toggle">
+      <span class="toggle-track"></span><span data-i18n="settings.diagram.openInLive">允许在 mermaid.live 中打开图表</span>
+    </label>
+    <div class="settings-path-hint" data-i18n="settings.diagram.openInLiveTip">点击后在浏览器打开；图表源码经 URL 传递，仅在你点击时发送</div>
+    <label class="toggle-label" style="margin-top:10px">
+      <input type="checkbox" id="diagram-flowchart-wysiwyg-toggle">
+      <span class="toggle-track"></span><span data-i18n="settings.diagram.flowchartWysiwyg">流程图可视化编辑（实验）</span>
+    </label>
+    <div class="settings-path-hint" data-i18n="settings.diagram.flowchartWysiwygTip">对 flowchart 启用画布拖拽编辑；其它图表类型仍编辑源码</div>
+  </div>
   <div class="panel-section" id="glass-settings" style="display:none">
     <div class="panel-label" data-i18n="settings.bgImage">毛玻璃背景图片</div>
     <div class="bg-btns">
@@ -491,6 +515,7 @@
 
 <script src="i18n-dom.js"></script>
 <script src="bootstrap-i18n.js"></script>
+<script src="vendor/mermaid.bundle.js"></script>
 <script src="app.js"></script>
 <script src="context-menu.js"></script>
 <script src="../../node_modules/html2canvas/dist/html2canvas.min.js" defer></script>

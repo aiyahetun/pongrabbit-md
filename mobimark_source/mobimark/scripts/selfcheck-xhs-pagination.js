@@ -38,6 +38,7 @@ check('xhsExplodeRealPreForPagination defined', /function xhsExplodeRealPreForPa
 check('list-item pagination', /kind:\s*'list-item'/.test(appSrc))
 check('fence-line pagination', /kind === 'fence-line'/.test(appSrc))
 check('pre-line pagination', /kind === 'pre-line'/.test(appSrc))
+check('mermaid pagination kind', /kind:\s*'mermaid'/.test(appSrc) && /xhsEnsureMermaidUnitsFit/.test(appSrc))
 check('xhsRenderPageChunkWithOverflow defined', /function xhsRenderPageChunkWithOverflow/.test(appSrc))
 check('exportXhsLong uses overflow renderer', /async function exportXhsLong[\s\S]*?xhsRenderPageChunkWithOverflow/.test(appSrc))
 check('no user-facing overflow alert', !/单块内容（如大图或超长段落）超过一页高度/.test(appSrc))

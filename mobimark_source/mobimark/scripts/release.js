@@ -17,6 +17,15 @@ function run (cmd, args) {
 run('node', ['scripts/selfcheck-locales.js'])
 run('node', ['scripts/selfcheck-license.js'])
 run('node', ['scripts/selfcheck-undo-coalesce.js'])
+run('node', ['scripts/selfcheck-mermaid.js'])
+run('node', ['scripts/selfcheck-mermaid-roundtrip.js'])
+run('node', ['scripts/selfcheck-mermaid-dom-roundtrip.js'])
+run('node', ['scripts/selfcheck-mermaid-blocks.js'])
+run('node', ['scripts/selfcheck-mermaid-flowchart.js'])
+run('node', ['scripts/selfcheck-export-html-mermaid.js'])
+run('node', ['scripts/selfcheck-flowchart-layout.js'])
+run('node', ['scripts/smoke-mermaid-render.js'])
+run('node', ['scripts/smoke-mermaid-bundle.js'])
 run('node', ['scripts/prepare-nsis-eula.js'])
 
 if (process.platform !== 'win32') {
