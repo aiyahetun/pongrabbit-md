@@ -40,6 +40,15 @@ let uiLocale = i18nInitial.locale
 
 const shellOpenListeners = []
 let pendingShellOpenPath = null
+const blankDocumentListeners = []
+let pendingBlankDocument = false
+ipcRenderer.on('blank-document', () => {
+  if (blankDocumentListeners.length) {
+    for (const cb of blankDocumentListeners) cb()
+  } else {
+    pendingBlankDocument = true
+  }
+})
 ipcRenderer.on('shell-open-file', (_, filePath) => {
   if (!filePath) return
   if (shellOpenListeners.length) {
@@ -141,6 +150,14 @@ contextBridge.exposeInMainWorld('mobiAPI', {
       const p = pendingShellOpenPath
       pendingShellOpenPath = null
       cb(p)
+    }
+  },
+  onBlankDocument: (cb) => {
+    if (typeof cb !== 'function') return
+    blankDocumentListeners.push(cb)
+    if (pendingBlankDocument) {
+      pendingBlankDocument = false
+      cb()
     }
   }
 })

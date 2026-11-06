@@ -612,7 +612,7 @@ function syncMacVibrancy (theme, targetWin = null) {
   else forEachWindow(apply)
 }
 
-function createWindow (initialFilePath = null) {
+function createWindow (initialFilePath = null, opts = {}) {
   const bounds = nextWindowBounds()
   const glassTheme = (config.theme || 'light') === 'glass'
   const winAcrylic = glassTheme && !hasGlassCustomBg()
@@ -686,6 +686,16 @@ function createWindow (initialFilePath = null) {
     }
   })
   win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  if (opts && opts.blankDocument) {
+    const sendBlankDocument = () => {
+      if (!win.isDestroyed()) win.webContents.send('blank-document')
+    }
+    if (win.webContents.isLoadingMainFrame()) {
+      win.webContents.once('did-finish-load', sendBlankDocument)
+    } else {
+      sendBlankDocument()
+    }
+  }
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
       shell.openExternal(url).catch(() => {})
@@ -1086,7 +1096,7 @@ ipcMain.handle('new-file', async (event, { hasChanges, promptTarget = 'discard-o
   })
   if (r2.response === 2) return { action: 'cancel' }
   if (r2.response === 0) {
-    focusWindow(createWindow())
+    focusWindow(createWindow(null, { blankDocument: true }))
     return { action: 'new-window' }
   }
   return { action: 'current-window' }

@@ -29,6 +29,10 @@ const findCount  = $('find-count')
 
 // ── State ────────────────────────────────────────────────────
 let cfg={}, currentFile=null, isModified=false
+let _appInitDone = false
+let _pendingBlankDocument = false
+/** 关联打开时 init 尚未结束，须等读完文件再跑 init 收尾，避免标题/路径被 init 末尾逻辑覆盖 */
+let _initialShellOpenPromise = null
 /** 代码/配置类文档只读打开（与 main.js CODE_DOC_READONLY_EXT 保持同步） */
 const READONLY_CODE_EXTS = new Set([
   '.json', '.jsonc', '.json5',
@@ -163,6 +167,7 @@ function applyI18n () {
     modeEl.textContent = tt(modeKey) === modeKey ? editMode : tt(modeKey)
   }
   syncReadOnlyUi()
+  syncDocumentTitleBar()
   updateStatus()
   syncGlassContrastSelectAvailability()
   if (outlineItems.length || _outlineMdSource) scheduleOutlineRefresh()
@@ -179,6 +184,7 @@ async function init() {
   syncReadOnlyUi()
   await loadI18n()
   setupShellOpenFileListener()
+  setupBlankDocumentListener()
   const plat = detectPlatform()
   if (plat === 'darwin') body.classList.add('platform-darwin')
   else if (plat === 'win32') body.classList.add('platform-win32')
@@ -227,8 +233,12 @@ async function init() {
   if (window.mobiAPI.winGetState) {
     try { applyWinState(await window.mobiAPI.winGetState()) } catch (_) {}
   }
-  // 恢复上次内容（如有）
-  if (cfg.pendingContent) {
+  if (_initialShellOpenPromise) {
+    try { await _initialShellOpenPromise } catch (_) {}
+    _initialShellOpenPromise = null
+  }
+  // 恢复上次内容（如有）；关联打开已完成时 currentFile 已设，勿用全局草稿覆盖
+  if (cfg.pendingContent && !currentFile) {
     mdEditor.value = cfg.pendingContent
     richEditor.innerHTML = md2html(cfg.pendingContent)
     upgradeRichEditorBlocks()
@@ -238,6 +248,43 @@ async function init() {
     renderPreview()
   }
   resetEditorHistory()
+  _appInitDone = true
+  if (_pendingBlankDocument) {
+    _pendingBlankDocument = false
+    resetToBlankDocument()
+  } else {
+    syncDocumentTitleBar()
+    reportDocumentPathToMain(currentFile || null)
+  }
+}
+
+function setupBlankDocumentListener () {
+  if (!window.mobiAPI.onBlankDocument) return
+  window.mobiAPI.onBlankDocument(() => {
+    if (_appInitDone) resetToBlankDocument()
+    else _pendingBlankDocument = true
+  })
+}
+
+function resetToBlankDocument () {
+  richEditor.innerHTML = ''
+  mdEditor.value = ''
+  currentFile = null
+  readOnlyDoc = false
+  syncReadOnlyUi()
+  _pristineMd = ''
+  _richSyncedMd = ''
+  _previewRenderedMd = null
+  _outlineMdSource = ''
+  _mdEdited = false
+  _wysiwygEdited = false
+  resetEditorHistory()
+  setModified(false)
+  setTitle(tt('ui.untitled'))
+  resetOutlineSessionState()
+  refreshOutline()
+  updateStatus()
+  reportDocumentPathToMain(null)
 }
 
 /** 系统关联打开 / 第二次实例传入的路径 */
@@ -262,7 +309,24 @@ async function openFileFromPath(filePath) {
 
 function setupShellOpenFileListener () {
   if (!window.mobiAPI.onShellOpenFile) return
-  window.mobiAPI.onShellOpenFile((p) => { void openFileFromPath(p) })
+  window.mobiAPI.onShellOpenFile((p) => {
+    const job = openFileFromPath(p)
+    if (!_appInitDone) _initialShellOpenPromise = job
+    else void job
+  })
+}
+
+/** 标题栏与 currentFile 对齐（修复关联打开与 init 竞态后残留旧文件名） */
+function syncDocumentTitleBar () {
+  if (!currentFile) {
+    setTitle(tt('ui.untitled'))
+    return
+  }
+  const fn = $('file-name')
+  const prev = (fn && fn.textContent) || ''
+  const compacted = prev.includes(tt('title.compacted'))
+  const baseTitle = bn(currentFile) + (readOnlyDoc ? tt('title.readonly') : '')
+  setTitle(compacted && !readOnlyDoc ? baseTitle + tt('title.compacted') : baseTitle)
 }
 
 function reportDocumentPathToMain (p) {
@@ -453,6 +517,7 @@ function applyOpenedDocument (r) {
   updateStatus()
   resetEditorHistory()
   reportDocumentPathToMain(r.filePath)
+  syncDocumentTitleBar()
 }
 
 function applySidebarTab (tab, save = true) {
@@ -1849,20 +1914,7 @@ async function newFile(){
     if(r.action==='cancel')return
   }
   if(r.action==='new-window')return
-  if(r.action==='current-window'){
-    richEditor.innerHTML='';mdEditor.value='';currentFile=null;readOnlyDoc=false;syncReadOnlyUi()
-    _pristineMd=''
-    _richSyncedMd=''
-    _previewRenderedMd=null
-    _outlineMdSource=''
-    _mdEdited=false
-    _wysiwygEdited=false
-    resetEditorHistory()
-    setModified(false);setTitle(tt('ui.untitled'));updateStatus()
-    resetOutlineSessionState()
-    refreshOutline()
-    reportDocumentPathToMain(null)
-  }
+  if(r.action==='current-window') resetToBlankDocument()
 }
 async function openFile(){
   const r=await window.mobiAPI.openFile()
